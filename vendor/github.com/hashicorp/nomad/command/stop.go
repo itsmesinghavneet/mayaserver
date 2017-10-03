@@ -3,9 +3,6 @@ package command
 import (
 	"fmt"
 	"strings"
-
-	"github.com/hashicorp/nomad/api/contexts"
-	"github.com/posener/complete"
 )
 
 type StopCommand struct {
@@ -17,7 +14,7 @@ func (c *StopCommand) Help() string {
 Usage: nomad stop [options] <job>
 
   Stop an existing job. This command is used to signal allocations
-  to shut down for the given job ID. Upon successful deregistration,
+  to shut down for the given job ID. Upon successful deregistraion,
   an interactive monitor session will start to display log lines as
   the job unwinds its allocations and completes shutting down. It
   is safe to exit the monitor early using ctrl+c.
@@ -34,10 +31,6 @@ Stop Options:
     screen, which can be used to examine the evaluation using the eval-status
     command.
 
-  -purge
-    Purge is used to stop the job and purge it from the system. If not set, the
-    job will still be queryable and will be purged by the garbage collector.
-
   -yes
     Automatic yes to prompts.
 
@@ -51,40 +44,14 @@ func (c *StopCommand) Synopsis() string {
 	return "Stop a running job"
 }
 
-func (c *StopCommand) AutocompleteFlags() complete.Flags {
-	return mergeAutocompleteFlags(c.Meta.AutocompleteFlags(FlagSetClient),
-		complete.Flags{
-			"-detach":  complete.PredictNothing,
-			"-purge":   complete.PredictNothing,
-			"-yes":     complete.PredictNothing,
-			"-verbose": complete.PredictNothing,
-		})
-}
-
-func (c *StopCommand) AutocompleteArgs() complete.Predictor {
-	return complete.PredictFunc(func(a complete.Args) []string {
-		client, err := c.Meta.Client()
-		if err != nil {
-			return nil
-		}
-
-		resp, _, err := client.Search().PrefixSearch(a.Last, contexts.Jobs, nil)
-		if err != nil {
-			return []string{}
-		}
-		return resp.Matches[contexts.Jobs]
-	})
-}
-
 func (c *StopCommand) Run(args []string) int {
-	var detach, purge, verbose, autoYes bool
+	var detach, verbose, autoYes bool
 
 	flags := c.Meta.FlagSet("stop", FlagSetClient)
 	flags.Usage = func() { c.Ui.Output(c.Help()) }
 	flags.BoolVar(&detach, "detach", false, "")
 	flags.BoolVar(&verbose, "verbose", false, "")
 	flags.BoolVar(&autoYes, "yes", false, "")
-	flags.BoolVar(&purge, "purge", false, "")
 
 	if err := flags.Parse(args); err != nil {
 		return 1
@@ -122,8 +89,17 @@ func (c *StopCommand) Run(args []string) int {
 		return 1
 	}
 	if len(jobs) > 1 && strings.TrimSpace(jobID) != jobs[0].ID {
-		c.Ui.Error(fmt.Sprintf("Prefix matched multiple jobs\n\n%s", createStatusListOutput(jobs)))
-		return 1
+		out := make([]string, len(jobs)+1)
+		out[0] = "ID|Type|Priority|Status"
+		for i, job := range jobs {
+			out[i+1] = fmt.Sprintf("%s|%s|%d|%s",
+				job.ID,
+				job.Type,
+				job.Priority,
+				job.Status)
+		}
+		c.Ui.Output(fmt.Sprintf("Prefix matched multiple jobs\n\n%s", formatList(out)))
+		return 0
 	}
 	// Prefix lookup matched a single job
 	job, _, err := client.Jobs().Info(jobs[0].ID, nil)
@@ -156,7 +132,7 @@ func (c *StopCommand) Run(args []string) int {
 	}
 
 	// Invoke the stop
-	evalID, _, err := client.Jobs().Deregister(*job.ID, purge, nil)
+	evalID, _, err := client.Jobs().Deregister(*job.ID, nil)
 	if err != nil {
 		c.Ui.Error(fmt.Sprintf("Error deregistering job: %s", err))
 		return 1

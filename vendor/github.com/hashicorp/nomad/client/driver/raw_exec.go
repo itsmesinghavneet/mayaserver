@@ -1,7 +1,6 @@
 package driver
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -10,9 +9,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-plugin"
-	"github.com/hashicorp/nomad/client/allocdir"
 	"github.com/hashicorp/nomad/client/config"
-	"github.com/hashicorp/nomad/client/driver/env"
 	"github.com/hashicorp/nomad/client/driver/executor"
 	dstructs "github.com/hashicorp/nomad/client/driver/structs"
 	"github.com/hashicorp/nomad/client/fingerprint"
@@ -50,8 +47,6 @@ type rawExecHandle struct {
 	logger         *log.Logger
 	waitCh         chan *dstructs.WaitResult
 	doneCh         chan struct{}
-	taskEnv        *env.TaskEnv
-	taskDir        *allocdir.TaskDir
 }
 
 // NewRawExecDriver is used to create a new raw exec driver
@@ -84,7 +79,6 @@ func (d *RawExecDriver) Validate(config map[string]interface{}) error {
 func (d *RawExecDriver) Abilities() DriverAbilities {
 	return DriverAbilities{
 		SendSignals: true,
-		Exec:        true,
 	}
 }
 
@@ -106,11 +100,11 @@ func (d *RawExecDriver) Fingerprint(cfg *config.Config, node *structs.Node) (boo
 	return false, nil
 }
 
-func (d *RawExecDriver) Prestart(*ExecContext, *structs.Task) (*PrestartResponse, error) {
+func (d *RawExecDriver) Prestart(*ExecContext, *structs.Task) (*CreatedResources, error) {
 	return nil, nil
 }
 
-func (d *RawExecDriver) Start(ctx *ExecContext, task *structs.Task) (*StartResponse, error) {
+func (d *RawExecDriver) Start(ctx *ExecContext, task *structs.Task) (DriverHandle, error) {
 	var driverConfig ExecDriverConfig
 	if err := mapstructure.WeakDecode(task.Config, &driverConfig); err != nil {
 		return nil, err
@@ -133,7 +127,7 @@ func (d *RawExecDriver) Start(ctx *ExecContext, task *structs.Task) (*StartRespo
 		return nil, err
 	}
 	executorCtx := &executor.ExecutorContext{
-		TaskEnv: ctx.TaskEnv,
+		TaskEnv: d.taskEnv,
 		Driver:  "raw_exec",
 		AllocID: d.DriverContext.allocID,
 		Task:    task,
@@ -165,15 +159,16 @@ func (d *RawExecDriver) Start(ctx *ExecContext, task *structs.Task) (*StartRespo
 		userPid:        ps.Pid,
 		killTimeout:    GetKillTimeout(task.KillTimeout, maxKill),
 		maxKillTimeout: maxKill,
-		version:        d.config.Version.VersionNumber(),
+		version:        d.config.Version,
 		logger:         d.logger,
 		doneCh:         make(chan struct{}),
 		waitCh:         make(chan *dstructs.WaitResult, 1),
-		taskEnv:        ctx.TaskEnv,
-		taskDir:        ctx.TaskDir,
+	}
+	if err := h.executor.SyncServices(consulContext(d.config, "")); err != nil {
+		h.logger.Printf("[ERR] driver.raw_exec: error registering services with consul for task: %q: %v", task.Name, err)
 	}
 	go h.run()
-	return &StartResponse{Handle: h}, nil
+	return h, nil
 }
 
 func (d *RawExecDriver) Cleanup(*ExecContext, *CreatedResources) error { return nil }
@@ -218,8 +213,9 @@ func (d *RawExecDriver) Open(ctx *ExecContext, handleID string) (DriverHandle, e
 		version:        id.Version,
 		doneCh:         make(chan struct{}),
 		waitCh:         make(chan *dstructs.WaitResult, 1),
-		taskEnv:        ctx.TaskEnv,
-		taskDir:        ctx.TaskDir,
+	}
+	if err := h.executor.SyncServices(consulContext(d.config, "")); err != nil {
+		h.logger.Printf("[ERR] driver.raw_exec: error registering services with consul: %v", err)
 	}
 	go h.run()
 	return h, nil
@@ -252,10 +248,6 @@ func (h *rawExecHandle) Update(task *structs.Task) error {
 
 	// Update is not possible
 	return nil
-}
-
-func (h *rawExecHandle) Exec(ctx context.Context, cmd string, args []string) ([]byte, int, error) {
-	return executor.ExecScript(ctx, h.taskDir.Dir, h.taskEnv, nil, cmd, args)
 }
 
 func (h *rawExecHandle) Signal(s os.Signal) error {
@@ -296,6 +288,10 @@ func (h *rawExecHandle) run() {
 		if e := killProcess(h.userPid); e != nil {
 			h.logger.Printf("[ERR] driver.raw_exec: error killing user process: %v", e)
 		}
+	}
+	// Remove services
+	if err := h.executor.DeregisterServices(); err != nil {
+		h.logger.Printf("[ERR] driver.raw_exec: failed to deregister services: %v", err)
 	}
 
 	// Exit the executor

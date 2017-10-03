@@ -25,10 +25,8 @@ import (
 	"github.com/hashicorp/nomad/helper/flag-helpers"
 	"github.com/hashicorp/nomad/helper/gated-writer"
 	"github.com/hashicorp/nomad/nomad/structs/config"
-	"github.com/hashicorp/nomad/version"
 	"github.com/hashicorp/scada-client/scada"
 	"github.com/mitchellh/cli"
-	"github.com/posener/complete"
 )
 
 // gracefulTimeout controls how long we wait before forcefully terminating
@@ -39,9 +37,11 @@ const gracefulTimeout = 5 * time.Second
 // ShutdownCh. If two messages are sent on the ShutdownCh it will forcibly
 // exit.
 type Command struct {
-	Version    *version.VersionInfo
-	Ui         cli.Ui
-	ShutdownCh <-chan struct{}
+	Revision          string
+	Version           string
+	VersionPrerelease string
+	Ui                cli.Ui
+	ShutdownCh        <-chan struct{}
 
 	args           []string
 	agent          *Agent
@@ -198,7 +198,9 @@ func (c *Command) readConfig() *Config {
 	config = config.Merge(cmdConfig)
 
 	// Set the version info
+	config.Revision = c.Revision
 	config.Version = c.Version
+	config.VersionPrerelease = c.VersionPrerelease
 
 	// Normalize binds, ports, addresses, and advertise
 	if err := config.normalizeAddrs(); err != nil {
@@ -348,7 +350,7 @@ func (c *Command) setupAgent(config *Config, logOutput io.Writer) error {
 	}
 
 	// Setup the HTTP server
-	http, err := NewHTTPServer(agent, config)
+	http, err := NewHTTPServer(agent, config, logOutput)
 	if err != nil {
 		agent.Shutdown()
 		c.Ui.Error(fmt.Sprintf("Error starting http server: %s", err))
@@ -358,9 +360,9 @@ func (c *Command) setupAgent(config *Config, logOutput io.Writer) error {
 
 	// Setup update checking
 	if !config.DisableUpdateCheck {
-		version := config.Version.Version
-		if config.Version.VersionPrerelease != "" {
-			version += fmt.Sprintf("-%s", config.Version.VersionPrerelease)
+		version := config.Version
+		if config.VersionPrerelease != "" {
+			version += fmt.Sprintf("-%s", config.VersionPrerelease)
 		}
 		updateParams := &checkpoint.CheckParams{
 			Product: "nomad",
@@ -389,7 +391,12 @@ func (c *Command) checkpointResults(results *checkpoint.CheckResponse, err error
 		return
 	}
 	if results.Outdated {
-		c.Ui.Error(fmt.Sprintf("Newer Nomad version available: %s (currently running: %s)", results.CurrentVersion, c.Version.VersionNumber()))
+		versionStr := c.Version
+		if c.VersionPrerelease != "" {
+			versionStr += fmt.Sprintf("-%s", c.VersionPrerelease)
+		}
+
+		c.Ui.Error(fmt.Sprintf("Newer Nomad version available: %s (currently running: %s)", results.CurrentVersion, versionStr))
 	}
 	for _, alert := range results.Alerts {
 		switch alert.Level {
@@ -399,20 +406,6 @@ func (c *Command) checkpointResults(results *checkpoint.CheckResponse, err error
 			c.Ui.Error(fmt.Sprintf("Bulletin [%s]: %s (%s)", alert.Level, alert.Message, alert.URL))
 		}
 	}
-}
-
-func (c *Command) AutocompleteFlags() complete.Flags {
-	configFilePredictor := complete.PredictOr(
-		complete.PredictFiles("*.json"),
-		complete.PredictFiles("*.hcl"))
-
-	return map[string]complete.Predictor{
-		"-config": configFilePredictor,
-	}
-}
-
-func (c *Command) AutocompleteArgs() complete.Predictor {
-	return nil
 }
 
 func (c *Command) Run(args []string) int {
@@ -477,11 +470,17 @@ func (c *Command) Run(args []string) int {
 
 	// Compile agent information for output later
 	info := make(map[string]string)
-	info["version"] = config.Version.VersionNumber()
+	info["version"] = fmt.Sprintf("%s%s", config.Version, config.VersionPrerelease)
 	info["client"] = strconv.FormatBool(config.Client.Enabled)
 	info["log level"] = config.LogLevel
 	info["server"] = strconv.FormatBool(config.Server.Enabled)
 	info["region"] = fmt.Sprintf("%s (DC: %s)", config.Region, config.Datacenter)
+	if config.Atlas != nil && config.Atlas.Infrastructure != "" {
+		info["atlas"] = fmt.Sprintf("(Infrastructure: '%s' Join: %v)",
+			config.Atlas.Infrastructure, config.Atlas.Join)
+	} else {
+		info["atlas"] = "<disabled>"
+	}
 
 	// Sort the keys for output
 	infoKeys := make([]string, 0, len(info))
@@ -738,7 +737,7 @@ func (c *Command) setupSCADA(config *Config) error {
 
 	scadaConfig := &scada.Config{
 		Service:      "nomad",
-		Version:      config.Version.VersionNumber(),
+		Version:      fmt.Sprintf("%s%s", config.Version, config.VersionPrerelease),
 		ResourceType: "nomad-cluster",
 		Meta: map[string]string{
 			"auto-join":  strconv.FormatBool(config.Atlas.Join),

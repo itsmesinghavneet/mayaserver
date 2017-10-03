@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
 	"net"
 	"time"
 
@@ -71,7 +70,8 @@ RECONCILE:
 	// Check if we need to handle initial leadership actions
 	if !establishedLeader {
 		if err := s.establishLeadership(stopCh); err != nil {
-			s.logger.Printf("[ERR] nomad: failed to establish leadership: %v", err)
+			s.logger.Printf("[ERR] nomad: failed to establish leadership: %v",
+				err)
 			goto WAIT
 		}
 		establishedLeader = true
@@ -130,11 +130,6 @@ func (s *Server) establishLeadership(stopCh chan struct{}) error {
 	// Enable the blocked eval tracker, since we are now the leader
 	s.blockedEvals.SetEnabled(true)
 
-	// Enable the deployment watcher, since we are now the leader
-	if err := s.deploymentWatcher.SetEnabled(true); err != nil {
-		return err
-	}
-
 	// Restore the eval broker state
 	if err := s.restoreEvals(); err != nil {
 		return err
@@ -148,6 +143,7 @@ func (s *Server) establishLeadership(stopCh chan struct{}) error {
 
 	// Enable the periodic dispatcher, since we are now the leader.
 	s.periodicDispatcher.SetEnabled(true)
+	s.periodicDispatcher.Start()
 
 	// Restore the periodic dispatcher state
 	if err := s.restorePeriodicDispatcher(); err != nil {
@@ -286,13 +282,6 @@ func (s *Server) restorePeriodicDispatcher() error {
 	now := time.Now()
 	for i := iter.Next(); i != nil; i = iter.Next() {
 		job := i.(*structs.Job)
-
-		// We skip adding parameterized jobs because they themselves aren't
-		// tracked, only the dispatched children are.
-		if job.IsParameterized() {
-			continue
-		}
-
 		s.periodicDispatcher.Add(job)
 
 		// If the periodic job has never been launched before, launch will hold
@@ -304,7 +293,7 @@ func (s *Server) restorePeriodicDispatcher() error {
 		}
 
 		// nextLaunch is the next launch that should occur.
-		nextLaunch := job.Periodic.Next(launch.Launch.In(job.Periodic.GetLocation()))
+		nextLaunch := job.Periodic.Next(launch.Launch)
 
 		// We skip force launching the job if  there should be no next launch
 		// (the zero case) or if the next launch time is in the future. If it is
@@ -398,24 +387,17 @@ func (s *Server) reapFailedEvaluations(stopCh chan struct{}) {
 			}
 
 			// Update the status to failed
-			updateEval := eval.Copy()
-			updateEval.Status = structs.EvalStatusFailed
-			updateEval.StatusDescription = fmt.Sprintf("evaluation reached delivery limit (%d)", s.config.EvalDeliveryLimit)
-			s.logger.Printf("[WARN] nomad: eval %#v reached delivery limit, marking as failed", updateEval)
-
-			// Create a follow-up evaluation that will be used to retry the
-			// scheduling for the job after the cluster is hopefully more stable
-			// due to the fairly large backoff.
-			followupEvalWait := s.config.EvalFailedFollowupBaselineDelay +
-				time.Duration(rand.Int63n(int64(s.config.EvalFailedFollowupDelayRange)))
-			followupEval := eval.CreateFailedFollowUpEval(followupEvalWait)
+			newEval := eval.Copy()
+			newEval.Status = structs.EvalStatusFailed
+			newEval.StatusDescription = fmt.Sprintf("evaluation reached delivery limit (%d)", s.config.EvalDeliveryLimit)
+			s.logger.Printf("[WARN] nomad: eval %#v reached delivery limit, marking as failed", newEval)
 
 			// Update via Raft
 			req := structs.EvalUpdateRequest{
-				Evals: []*structs.Evaluation{updateEval, followupEval},
+				Evals: []*structs.Evaluation{newEval},
 			}
 			if _, _, err := s.raftApply(structs.EvalUpdateRequestType, &req); err != nil {
-				s.logger.Printf("[ERR] nomad: failed to update failed eval %#v and create a follow-up: %v", updateEval, err)
+				s.logger.Printf("[ERR] nomad: failed to update failed eval %#v: %v", newEval, err)
 				continue
 			}
 
@@ -492,11 +474,6 @@ func (s *Server) revokeLeadership() error {
 
 	// Disable the Vault client as it is only useful as a leader.
 	s.vault.SetActive(false)
-
-	// Disable the deployment watcher as it is only useful as a leader.
-	if err := s.deploymentWatcher.SetEnabled(false); err != nil {
-		return err
-	}
 
 	// Clear the heartbeat timers on either shutdown or step down,
 	// since we are no longer responsible for TTL expirations.

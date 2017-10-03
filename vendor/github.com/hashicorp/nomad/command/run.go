@@ -14,7 +14,6 @@ import (
 	"github.com/hashicorp/nomad/api"
 	"github.com/hashicorp/nomad/helper"
 	"github.com/hashicorp/nomad/nomad/structs"
-	"github.com/posener/complete"
 )
 
 var (
@@ -97,21 +96,6 @@ func (c *RunCommand) Synopsis() string {
 	return "Run a new job or update an existing job"
 }
 
-func (c *RunCommand) AutocompleteFlags() complete.Flags {
-	return mergeAutocompleteFlags(c.Meta.AutocompleteFlags(FlagSetClient),
-		complete.Flags{
-			"-check-index": complete.PredictNothing,
-			"-detach":      complete.PredictNothing,
-			"-verbose":     complete.PredictNothing,
-			"-vault-token": complete.PredictAnything,
-			"-output":      complete.PredictNothing,
-		})
-}
-
-func (c *RunCommand) AutocompleteArgs() complete.Predictor {
-	return complete.PredictOr(complete.PredictFiles("*.nomad"), complete.PredictFiles("*.hcl"))
-}
-
 func (c *RunCommand) Run(args []string) int {
 	var detach, verbose, output bool
 	var checkIndexStr, vaultToken string
@@ -181,6 +165,19 @@ func (c *RunCommand) Run(args []string) int {
 		job.VaultToken = helper.StringToPtr(vaultToken)
 	}
 
+	// COMPAT 0.4.1 -> 0.5 Remove in 0.6
+OUTSIDE:
+	for _, tg := range job.TaskGroups {
+		for _, task := range tg.Tasks {
+			if task.Resources != nil {
+				if task.Resources.DiskMB != nil {
+					c.Ui.Error("WARNING: disk attribute is deprecated in the resources block. See https://www.nomadproject.io/docs/job-specification/ephemeral_disk.html")
+					break OUTSIDE
+				}
+			}
+		}
+	}
+
 	if output {
 		req := api.RegisterJobRequest{Job: job}
 		buf, err := json.MarshalIndent(req, "", "    ")
@@ -201,11 +198,11 @@ func (c *RunCommand) Run(args []string) int {
 	}
 
 	// Submit the job
-	var resp *api.JobRegisterResponse
+	var evalID string
 	if enforce {
-		resp, _, err = client.Jobs().EnforceRegister(job, checkIndex, nil)
+		evalID, _, err = client.Jobs().EnforceRegister(job, checkIndex, nil)
 	} else {
-		resp, _, err = client.Jobs().Register(job, nil)
+		evalID, _, err = client.Jobs().Register(job, nil)
 	}
 	if err != nil {
 		if strings.Contains(err.Error(), api.RegisterEnforceIndexErrPrefix) {
@@ -222,14 +219,6 @@ func (c *RunCommand) Run(args []string) int {
 		c.Ui.Error(fmt.Sprintf("Error submitting job: %s", err))
 		return 1
 	}
-
-	// Print any warnings if there are any
-	if resp.Warnings != "" {
-		c.Ui.Output(
-			c.Colorize().Color(fmt.Sprintf("[bold][yellow]Job Warnings:\n%s[reset]\n", resp.Warnings)))
-	}
-
-	evalID := resp.EvalID
 
 	// Check if we should enter monitor mode
 	if detach || periodic || paramjob {

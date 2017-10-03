@@ -12,13 +12,12 @@ import (
 )
 
 func TestVaultClient_TokenRenewals(t *testing.T) {
-	t.Parallel()
-	v := testutil.NewTestVault(t)
+	v := testutil.NewTestVault(t).Start()
 	defer v.Stop()
 
 	logger := log.New(os.Stderr, "TEST: ", log.Lshortfile|log.LstdFlags)
 	v.Config.ConnectionRetryIntv = 100 * time.Millisecond
-	v.Config.TaskTokenTTL = "4s"
+	v.Config.TaskTokenTTL = "10s"
 	c, err := NewVaultClient(v.Config, logger, nil)
 	if err != nil {
 		t.Fatalf("failed to build vault client: %v", err)
@@ -28,7 +27,7 @@ func TestVaultClient_TokenRenewals(t *testing.T) {
 	defer c.Stop()
 
 	// Sleep a little while to ensure that the renewal loop is active
-	time.Sleep(time.Duration(testutil.TestMultiplier()) * time.Second)
+	time.Sleep(3 * time.Second)
 
 	tcr := &vaultapi.TokenCreateRequest{
 		Policies:    []string{"foo", "bar"},
@@ -67,9 +66,7 @@ func TestVaultClient_TokenRenewals(t *testing.T) {
 			for {
 				select {
 				case err := <-errCh:
-					if err != nil {
-						t.Fatalf("error while renewing the token: %v", err)
-					}
+					t.Fatalf("error while renewing the token: %v", err)
 				}
 			}
 		}(errCh)
@@ -79,7 +76,7 @@ func TestVaultClient_TokenRenewals(t *testing.T) {
 		t.Fatalf("bad: heap length: expected: %d, actual: %d", num, c.heap.Length())
 	}
 
-	time.Sleep(time.Duration(testutil.TestMultiplier()) * time.Second)
+	time.Sleep(time.Duration(5*testutil.TestMultiplier()) * time.Second)
 
 	for i := 0; i < num; i++ {
 		if err := c.StopRenewToken(tokens[i]); err != nil {
@@ -93,7 +90,6 @@ func TestVaultClient_TokenRenewals(t *testing.T) {
 }
 
 func TestVaultClient_Heap(t *testing.T) {
-	t.Parallel()
 	tr := true
 	conf := config.DefaultConfig()
 	conf.VaultConfig.Enabled = &tr

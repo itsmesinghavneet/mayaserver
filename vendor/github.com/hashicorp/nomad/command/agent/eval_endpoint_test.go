@@ -10,8 +10,7 @@ import (
 )
 
 func TestHTTP_EvalList(t *testing.T) {
-	t.Parallel()
-	httpTest(t, nil, func(s *TestAgent) {
+	httpTest(t, nil, func(s *TestServer) {
 		// Directly manipulate the state
 		state := s.Agent.server.State()
 		eval1 := mock.Eval()
@@ -55,8 +54,7 @@ func TestHTTP_EvalList(t *testing.T) {
 }
 
 func TestHTTP_EvalPrefixList(t *testing.T) {
-	t.Parallel()
-	httpTest(t, nil, func(s *TestAgent) {
+	httpTest(t, nil, func(s *TestServer) {
 		// Directly manipulate the state
 		state := s.Agent.server.State()
 		eval1 := mock.Eval()
@@ -107,8 +105,7 @@ func TestHTTP_EvalPrefixList(t *testing.T) {
 }
 
 func TestHTTP_EvalAllocations(t *testing.T) {
-	t.Parallel()
-	httpTest(t, nil, func(s *TestAgent) {
+	httpTest(t, nil, func(s *TestServer) {
 		// Directly manipulate the state
 		state := s.Agent.server.State()
 		alloc1 := mock.Alloc()
@@ -156,8 +153,7 @@ func TestHTTP_EvalAllocations(t *testing.T) {
 }
 
 func TestHTTP_EvalQuery(t *testing.T) {
-	t.Parallel()
-	httpTest(t, nil, func(s *TestAgent) {
+	httpTest(t, nil, func(s *TestServer) {
 		// Directly manipulate the state
 		state := s.Agent.server.State()
 		eval := mock.Eval()

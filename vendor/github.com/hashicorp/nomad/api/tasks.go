@@ -2,9 +2,6 @@ package api
 
 import (
 	"fmt"
-	"path"
-
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -93,29 +90,20 @@ type ServiceCheck struct {
 	Interval      time.Duration
 	Timeout       time.Duration
 	InitialStatus string `mapstructure:"initial_status"`
-	TLSSkipVerify bool   `mapstructure:"tls_skip_verify"`
-	Header        map[string][]string
-	Method        string
 }
 
 // The Service model represents a Consul service definition
 type Service struct {
-	Id          string
-	Name        string
-	Tags        []string
-	PortLabel   string `mapstructure:"port"`
-	AddressMode string `mapstructure:"address_mode"`
-	Checks      []ServiceCheck
+	Id        string
+	Name      string
+	Tags      []string
+	PortLabel string `mapstructure:"port"`
+	Checks    []ServiceCheck
 }
 
 func (s *Service) Canonicalize(t *Task, tg *TaskGroup, job *Job) {
 	if s.Name == "" {
 		s.Name = fmt.Sprintf("%s-%s-%s", *job.Name, *tg.Name, t.Name)
-	}
-
-	// Default to AddressModeAuto
-	if s.AddressMode == "" {
-		s.AddressMode = "auto"
 	}
 }
 
@@ -154,7 +142,6 @@ type TaskGroup struct {
 	Tasks         []*Task
 	RestartPolicy *RestartPolicy
 	EphemeralDisk *EphemeralDisk
-	Update        *UpdateStrategy
 	Meta          map[string]string
 }
 
@@ -180,22 +167,6 @@ func (g *TaskGroup) Canonicalize(job *Job) {
 		g.EphemeralDisk = DefaultEphemeralDisk()
 	} else {
 		g.EphemeralDisk.Canonicalize()
-	}
-
-	// Merge the update policy from the job
-	if ju, tu := job.Update != nil, g.Update != nil; ju && tu {
-		// Merge the jobs and task groups definition of the update strategy
-		jc := job.Update.Copy()
-		jc.Merge(g.Update)
-		g.Update = jc
-	} else if ju && !job.Update.Empty() {
-		// Inherit the jobs as long as it is non-empty.
-		jc := job.Update.Copy()
-		g.Update = jc
-	}
-
-	if g.Update != nil {
-		g.Update.Canonicalize()
 	}
 
 	var defaultRestartPolicy *RestartPolicy
@@ -294,7 +265,6 @@ type Task struct {
 	Templates       []*Template
 	DispatchPayload *DispatchPayloadConfig
 	Leader          bool
-	ShutdownDelay   time.Duration `mapstructure:"shutdown_delay"`
 }
 
 func (t *Task) Canonicalize(tg *TaskGroup, job *Job) {
@@ -329,30 +299,12 @@ func (t *Task) Canonicalize(tg *TaskGroup, job *Job) {
 type TaskArtifact struct {
 	GetterSource  *string           `mapstructure:"source"`
 	GetterOptions map[string]string `mapstructure:"options"`
-	GetterMode    *string           `mapstructure:"mode"`
 	RelativeDest  *string           `mapstructure:"destination"`
 }
 
 func (a *TaskArtifact) Canonicalize() {
-	if a.GetterMode == nil {
-		a.GetterMode = helper.StringToPtr("any")
-	}
-	if a.GetterSource == nil {
-		// Shouldn't be possible, but we don't want to panic
-		a.GetterSource = helper.StringToPtr("")
-	}
 	if a.RelativeDest == nil {
-		switch *a.GetterMode {
-		case "file":
-			// File mode should default to local/filename
-			dest := *a.GetterSource
-			dest = path.Base(dest)
-			dest = filepath.Join("local", dest)
-			a.RelativeDest = &dest
-		default:
-			// Default to a directory
-			a.RelativeDest = helper.StringToPtr("local/")
-		}
+		a.RelativeDest = helper.StringToPtr("local/")
 	}
 }
 
@@ -366,8 +318,6 @@ type Template struct {
 	Perms        *string        `mapstructure:"perms"`
 	LeftDelim    *string        `mapstructure:"left_delimiter"`
 	RightDelim   *string        `mapstructure:"right_delimiter"`
-	Envvars      *bool          `mapstructure:"env"`
-	VaultGrace   *time.Duration `mapstructure:"vault_grace"`
 }
 
 func (tmpl *Template) Canonicalize() {
@@ -404,12 +354,6 @@ func (tmpl *Template) Canonicalize() {
 	}
 	if tmpl.RightDelim == nil {
 		tmpl.RightDelim = helper.StringToPtr("}}")
-	}
-	if tmpl.Envvars == nil {
-		tmpl.Envvars = helper.BoolToPtr(false)
-	}
-	if tmpl.VaultGrace == nil {
-		tmpl.VaultGrace = helper.TimeToPtr(5 * time.Minute)
 	}
 }
 
@@ -480,13 +424,11 @@ func (t *Task) SetLogConfig(l *LogConfig) *Task {
 // TaskState tracks the current state of a task and events that caused state
 // transitions.
 type TaskState struct {
-	State       string
-	Failed      bool
-	Restarts    uint64
-	LastRestart time.Time
-	StartedAt   time.Time
-	FinishedAt  time.Time
-	Events      []*TaskEvent
+	State      string
+	Failed     bool
+	StartedAt  time.Time
+	FinishedAt time.Time
+	Events     []*TaskEvent
 }
 
 const (
@@ -508,8 +450,6 @@ const (
 	TaskSignaling              = "Signaling"
 	TaskRestartSignal          = "Restart Signaled"
 	TaskLeaderDead             = "Leader Task Dead"
-	TaskBuildingTaskDir        = "Building Task Directory"
-	TaskGenericMessage         = "Generic"
 )
 
 // TaskEvent is an event that effects the state of a task and contains meta-data
@@ -537,5 +477,4 @@ type TaskEvent struct {
 	VaultError       string
 	TaskSignalReason string
 	TaskSignal       string
-	GenericSource    string
 }

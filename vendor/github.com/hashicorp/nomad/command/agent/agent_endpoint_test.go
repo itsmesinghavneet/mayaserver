@@ -13,8 +13,7 @@ import (
 )
 
 func TestHTTP_AgentSelf(t *testing.T) {
-	t.Parallel()
-	httpTest(t, nil, func(s *TestAgent) {
+	httpTest(t, nil, func(s *TestServer) {
 		// Make the HTTP request
 		req, err := http.NewRequest("GET", "/v1/agent/self", nil)
 		if err != nil {
@@ -36,30 +35,11 @@ func TestHTTP_AgentSelf(t *testing.T) {
 		if len(self.Stats) == 0 {
 			t.Fatalf("bad: %#v", self)
 		}
-
-		// Check the Vault config
-		if self.Config.Vault.Token != "" {
-			t.Fatalf("bad: %#v", self)
-		}
-
-		// Assign a Vault token and assert it is redacted.
-		s.Config.Vault.Token = "badc0deb-adc0-deba-dc0d-ebadc0debadc"
-		respW = httptest.NewRecorder()
-		obj, err = s.Server.AgentSelfRequest(respW, req)
-		if err != nil {
-			t.Fatalf("err: %v", err)
-		}
-		self = obj.(agentSelf)
-		if self.Config.Vault.Token != "<redacted>" {
-			t.Fatalf("bad: %#v", self)
-		}
 	})
 }
 
 func TestHTTP_AgentJoin(t *testing.T) {
-	// TODO(alexdadgar)
-	// t.Parallel()
-	httpTest(t, nil, func(s *TestAgent) {
+	httpTest(t, nil, func(s *TestServer) {
 		// Determine the join address
 		member := s.Agent.Server().LocalMember()
 		addr := fmt.Sprintf("%s:%d", member.Addr, member.Port)
@@ -90,8 +70,7 @@ func TestHTTP_AgentJoin(t *testing.T) {
 }
 
 func TestHTTP_AgentMembers(t *testing.T) {
-	t.Parallel()
-	httpTest(t, nil, func(s *TestAgent) {
+	httpTest(t, nil, func(s *TestServer) {
 		// Make the HTTP request
 		req, err := http.NewRequest("GET", "/v1/agent/members", nil)
 		if err != nil {
@@ -114,8 +93,7 @@ func TestHTTP_AgentMembers(t *testing.T) {
 }
 
 func TestHTTP_AgentForceLeave(t *testing.T) {
-	t.Parallel()
-	httpTest(t, nil, func(s *TestAgent) {
+	httpTest(t, nil, func(s *TestServer) {
 		// Make the HTTP request
 		req, err := http.NewRequest("PUT", "/v1/agent/force-leave?node=foo", nil)
 		if err != nil {
@@ -132,8 +110,7 @@ func TestHTTP_AgentForceLeave(t *testing.T) {
 }
 
 func TestHTTP_AgentSetServers(t *testing.T) {
-	t.Parallel()
-	httpTest(t, nil, func(s *TestAgent) {
+	httpTest(t, nil, func(s *TestServer) {
 		// Establish a baseline number of servers
 		req, err := http.NewRequest("GET", "/v1/agent/servers", nil)
 		if err != nil {
@@ -206,13 +183,11 @@ func TestHTTP_AgentSetServers(t *testing.T) {
 }
 
 func TestHTTP_AgentListKeys(t *testing.T) {
-	t.Parallel()
-
 	key1 := "HS5lJ+XuTlYKWaeGYyG+/A=="
 
 	httpTest(t, func(c *Config) {
 		c.Server.EncryptKey = key1
-	}, func(s *TestAgent) {
+	}, func(s *TestServer) {
 		req, err := http.NewRequest("GET", "/v1/agent/keyring/list", nil)
 		if err != nil {
 			t.Fatalf("err: %s", err)
@@ -231,15 +206,12 @@ func TestHTTP_AgentListKeys(t *testing.T) {
 }
 
 func TestHTTP_AgentInstallKey(t *testing.T) {
-	// TODO(alexdadgar)
-	// t.Parallel()
-
 	key1 := "HS5lJ+XuTlYKWaeGYyG+/A=="
 	key2 := "wH1Bn9hlJ0emgWB1JttVRA=="
 
 	httpTest(t, func(c *Config) {
 		c.Server.EncryptKey = key1
-	}, func(s *TestAgent) {
+	}, func(s *TestServer) {
 		b, err := json.Marshal(&structs.KeyringRequest{Key: key2})
 		if err != nil {
 			t.Fatalf("err: %v", err)
@@ -272,15 +244,12 @@ func TestHTTP_AgentInstallKey(t *testing.T) {
 }
 
 func TestHTTP_AgentRemoveKey(t *testing.T) {
-	// TODO(alexdadgar)
-	// t.Parallel()
-
 	key1 := "HS5lJ+XuTlYKWaeGYyG+/A=="
 	key2 := "wH1Bn9hlJ0emgWB1JttVRA=="
 
 	httpTest(t, func(c *Config) {
 		c.Server.EncryptKey = key1
-	}, func(s *TestAgent) {
+	}, func(s *TestServer) {
 		b, err := json.Marshal(&structs.KeyringRequest{Key: key2})
 		if err != nil {
 			t.Fatalf("err: %v", err)

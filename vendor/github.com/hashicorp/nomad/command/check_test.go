@@ -8,9 +8,8 @@ import (
 )
 
 func TestAgentCheckCommand_ServerHealth(t *testing.T) {
-	t.Parallel()
-	srv, _, url := testServer(t, false, nil)
-	defer srv.Shutdown()
+	srv, _, url := testServer(t, nil)
+	defer srv.Stop()
 
 	ui := new(cli.MockUi)
 	cmd := &AgentCheckCommand{Meta: Meta{Ui: ui}}

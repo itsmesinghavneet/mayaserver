@@ -62,19 +62,7 @@ The `rkt` driver supports the following configuration in the job spec:
 
 * `trust_prefix` - (Optional) The trust prefix to be passed to rkt. Must be
   reachable from the box running the nomad agent. If not specified, the image is
-  run with `--insecure-options=all`.
-
-* `insecure_options` - (Optional) List of insecure options for rkt. Consult `rkt --help`
-  for list of supported values. This list overrides the `--insecure-options=all` default when
-  no ```trust_prefix``` is provided in the job config, which can be effectively used to enforce
-  secure runs, using ```insecure_options = ["none"]``` option.
-
-  ```hcl
-  config {
-      image = "example.com/image:1.0"
-      insecure_options = ["image", "tls", "ondisk"]
-  }
-  ```
+  run without verifying the image signature.
 
 * `dns_servers` - (Optional) A list of DNS servers to be used in the container.
   Alternatively a list containing just `host` or `none`. `host` uses the host's
@@ -100,17 +88,12 @@ The `rkt` driver supports the following configuration in the job spec:
 
 * `debug` - (Optional) Enable rkt command debug option.
 
-* `no_overlay` - (Optional) When enabled, will use `--no-overlay=true` flag for 'rkt run'.
-  Useful when running jobs on older systems affected by https://github.com/rkt/rkt/issues/1922
-
-* `volumes` - (Optional) A list of `host_path:container_path[:readOnly]` strings to bind
+* `volumes` - (Optional) A list of `host_path:container_path` strings to bind
   host paths to container paths.
-  Mount is done read-write by default; an optional third parameter `readOnly` can be provided
-  to make it read-only.
 
     ```hcl
     config {
-      volumes = ["/path/on/host:/path/in/container", "/readonly/path/on/host:/path/in/container:readOnly"]
+      volumes = ["/path/on/host:/path/in/container"]
     }
     ```
 
@@ -180,9 +163,9 @@ The `rkt` driver will set the following client attributes:
 
 * `driver.rkt` - Set to `1` if rkt is found on the host node. Nomad determines
   this by executing `rkt version` on the host and parsing the output
-* `driver.rkt.version` - Version of `rkt` e.g.: `1.1.0`. Note that the minimum required
+* `driver.rkt.version` - Version of `rkt` eg: `1.1.0`. Note that the minimum required
   version is `1.0.0`
-* `driver.rkt.appc.version` - Version of `appc` that `rkt` is using e.g.: `1.1.0`
+* `driver.rkt.appc.version` - Version of `appc` that `rkt` is using eg: `1.1.0`
 
 Here is an example of using these properties in a job file:
 

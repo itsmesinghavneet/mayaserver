@@ -1,13 +1,11 @@
 package nomad
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
 	"github.com/hashicorp/nomad/nomad/mock"
 	"github.com/hashicorp/nomad/nomad/structs"
-	"github.com/hashicorp/nomad/testutil"
 )
 
 var (
@@ -17,39 +15,18 @@ var (
 	}
 )
 
-func testBrokerConfig() *Config {
-	config := DefaultConfig()
-
-	// Tune the Nack timeout
-	config.EvalNackTimeout = 5 * time.Second
-
-	// Tune the Nack delay
-	config.EvalNackInitialReenqueueDelay = 5 * time.Millisecond
-	config.EvalNackSubsequentReenqueueDelay = 50 * time.Millisecond
-	return config
-}
-
 func testBroker(t *testing.T, timeout time.Duration) *EvalBroker {
-	config := testBrokerConfig()
-
-	if timeout != 0 {
-		config.EvalNackTimeout = timeout
+	if timeout == 0 {
+		timeout = 5 * time.Second
 	}
-
-	return testBrokerFromConfig(t, config)
-}
-
-func testBrokerFromConfig(t *testing.T, c *Config) *EvalBroker {
-	b, err := NewEvalBroker(c.EvalNackTimeout, c.EvalNackInitialReenqueueDelay, c.EvalNackSubsequentReenqueueDelay, 3)
+	b, err := NewEvalBroker(timeout, 3)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-
 	return b
 }
 
 func TestEvalBroker_Enqueue_Dequeue_Nack_Ack(t *testing.T) {
-	t.Parallel()
 	b := testBroker(t, 0)
 
 	// Enqueue, but broker is disabled!
@@ -149,28 +126,19 @@ func TestEvalBroker_Enqueue_Dequeue_Nack_Ack(t *testing.T) {
 	}
 
 	// Check the stats
-	testutil.WaitForResult(func() (bool, error) {
-		stats = b.Stats()
-		if stats.TotalReady != 1 {
-			return false, fmt.Errorf("bad: %#v", stats)
-		}
-		if stats.TotalUnacked != 0 {
-			return false, fmt.Errorf("bad: %#v", stats)
-		}
-		if stats.TotalWaiting != 0 {
-			return false, fmt.Errorf("bad: %#v", stats)
-		}
-		if stats.ByScheduler[eval.Type].Ready != 1 {
-			return false, fmt.Errorf("bad: %#v", stats)
-		}
-		if stats.ByScheduler[eval.Type].Unacked != 0 {
-			return false, fmt.Errorf("bad: %#v", stats)
-		}
-
-		return true, nil
-	}, func(e error) {
-		t.Fatal(e)
-	})
+	stats = b.Stats()
+	if stats.TotalReady != 1 {
+		t.Fatalf("bad: %#v", stats)
+	}
+	if stats.TotalUnacked != 0 {
+		t.Fatalf("bad: %#v", stats)
+	}
+	if stats.ByScheduler[eval.Type].Ready != 1 {
+		t.Fatalf("bad: %#v", stats)
+	}
+	if stats.ByScheduler[eval.Type].Unacked != 0 {
+		t.Fatalf("bad: %#v", stats)
+	}
 
 	// Dequeue should work again
 	out2, token2, err := b.Dequeue(defaultSched, time.Second)
@@ -224,166 +192,7 @@ func TestEvalBroker_Enqueue_Dequeue_Nack_Ack(t *testing.T) {
 	}
 }
 
-func TestEvalBroker_Nack_Delay(t *testing.T) {
-	t.Parallel()
-	b := testBroker(t, 0)
-
-	// Enqueue, but broker is disabled!
-	b.SetEnabled(true)
-	eval := mock.Eval()
-	b.Enqueue(eval)
-
-	// Dequeue should work
-	out, token, err := b.Dequeue(defaultSched, time.Second)
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-	if out != eval {
-		t.Fatalf("bad : %#v", out)
-	}
-
-	// Nack back into the queue
-	err = b.Nack(eval.ID, token)
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-
-	if _, ok := b.Outstanding(out.ID); ok {
-		t.Fatalf("should not be outstanding")
-	}
-
-	// Check the stats to ensure that it is waiting
-	stats := b.Stats()
-	if stats.TotalReady != 0 {
-		t.Fatalf("bad: %#v", stats)
-	}
-	if stats.TotalUnacked != 0 {
-		t.Fatalf("bad: %#v", stats)
-	}
-	if stats.TotalWaiting != 1 {
-		t.Fatalf("bad: %#v", stats)
-	}
-	if stats.ByScheduler[eval.Type].Ready != 0 {
-		t.Fatalf("bad: %#v", stats)
-	}
-	if stats.ByScheduler[eval.Type].Unacked != 0 {
-		t.Fatalf("bad: %#v", stats)
-	}
-
-	// Now wait for it to be re-enqueued
-	testutil.WaitForResult(func() (bool, error) {
-		stats = b.Stats()
-		if stats.TotalReady != 1 {
-			return false, fmt.Errorf("bad: %#v", stats)
-		}
-		if stats.TotalUnacked != 0 {
-			return false, fmt.Errorf("bad: %#v", stats)
-		}
-		if stats.TotalWaiting != 0 {
-			return false, fmt.Errorf("bad: %#v", stats)
-		}
-		if stats.ByScheduler[eval.Type].Ready != 1 {
-			return false, fmt.Errorf("bad: %#v", stats)
-		}
-		if stats.ByScheduler[eval.Type].Unacked != 0 {
-			return false, fmt.Errorf("bad: %#v", stats)
-		}
-
-		return true, nil
-	}, func(e error) {
-		t.Fatal(e)
-	})
-
-	// Dequeue should work again
-	out2, token2, err := b.Dequeue(defaultSched, time.Second)
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-	if out2 != eval {
-		t.Fatalf("bad : %#v", out2)
-	}
-	if token2 == token {
-		t.Fatalf("should get a new token")
-	}
-
-	// Capture the time
-	start := time.Now()
-
-	// Nack back into the queue
-	err = b.Nack(eval.ID, token2)
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-
-	// Now wait for it to be re-enqueued
-	testutil.WaitForResult(func() (bool, error) {
-		stats = b.Stats()
-		if stats.TotalReady != 1 {
-			return false, fmt.Errorf("bad: %#v", stats)
-		}
-		if stats.TotalUnacked != 0 {
-			return false, fmt.Errorf("bad: %#v", stats)
-		}
-		if stats.TotalWaiting != 0 {
-			return false, fmt.Errorf("bad: %#v", stats)
-		}
-		if stats.ByScheduler[eval.Type].Ready != 1 {
-			return false, fmt.Errorf("bad: %#v", stats)
-		}
-		if stats.ByScheduler[eval.Type].Unacked != 0 {
-			return false, fmt.Errorf("bad: %#v", stats)
-		}
-
-		return true, nil
-	}, func(e error) {
-		t.Fatal(e)
-	})
-
-	delay := time.Now().Sub(start)
-	if delay < b.subsequentNackDelay {
-		t.Fatalf("bad: delay was %v; want at least %v", delay, b.subsequentNackDelay)
-	}
-
-	// Dequeue should work again
-	out3, token3, err := b.Dequeue(defaultSched, time.Second)
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-	if out3 != eval {
-		t.Fatalf("bad : %#v", out3)
-	}
-	if token3 == token || token3 == token2 {
-		t.Fatalf("should get a new token")
-	}
-
-	// Ack finally
-	err = b.Ack(eval.ID, token3)
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-
-	if _, ok := b.Outstanding(out.ID); ok {
-		t.Fatalf("should not be outstanding")
-	}
-
-	// Check the stats
-	stats = b.Stats()
-	if stats.TotalReady != 0 {
-		t.Fatalf("bad: %#v", stats)
-	}
-	if stats.TotalUnacked != 0 {
-		t.Fatalf("bad: %#v", stats)
-	}
-	if stats.ByScheduler[eval.Type].Ready != 0 {
-		t.Fatalf("bad: %#v", stats)
-	}
-	if stats.ByScheduler[eval.Type].Unacked != 0 {
-		t.Fatalf("bad: %#v", stats)
-	}
-}
-
 func TestEvalBroker_Serialize_DuplicateJobID(t *testing.T) {
-	t.Parallel()
 	b := testBroker(t, 0)
 	b.SetEnabled(true)
 
@@ -527,7 +336,6 @@ func TestEvalBroker_Serialize_DuplicateJobID(t *testing.T) {
 }
 
 func TestEvalBroker_Enqueue_Disable(t *testing.T) {
-	t.Parallel()
 	b := testBroker(t, 0)
 
 	// Enqueue
@@ -552,7 +360,6 @@ func TestEvalBroker_Enqueue_Disable(t *testing.T) {
 }
 
 func TestEvalBroker_Dequeue_Timeout(t *testing.T) {
-	t.Parallel()
 	b := testBroker(t, 0)
 	b.SetEnabled(true)
 
@@ -573,7 +380,6 @@ func TestEvalBroker_Dequeue_Timeout(t *testing.T) {
 }
 
 func TestEvalBroker_Dequeue_Empty_Timeout(t *testing.T) {
-	t.Parallel()
 	b := testBroker(t, 0)
 	b.SetEnabled(true)
 	doneCh := make(chan struct{}, 1)
@@ -610,7 +416,6 @@ func TestEvalBroker_Dequeue_Empty_Timeout(t *testing.T) {
 
 // Ensure higher priority dequeued first
 func TestEvalBroker_Dequeue_Priority(t *testing.T) {
-	t.Parallel()
 	b := testBroker(t, 0)
 	b.SetEnabled(true)
 
@@ -644,7 +449,6 @@ func TestEvalBroker_Dequeue_Priority(t *testing.T) {
 
 // Ensure FIFO at fixed priority
 func TestEvalBroker_Dequeue_FIFO(t *testing.T) {
-	t.Parallel()
 	b := testBroker(t, 0)
 	b.SetEnabled(true)
 	NUM := 100
@@ -666,10 +470,9 @@ func TestEvalBroker_Dequeue_FIFO(t *testing.T) {
 
 // Ensure fairness between schedulers
 func TestEvalBroker_Dequeue_Fairness(t *testing.T) {
-	t.Parallel()
 	b := testBroker(t, 0)
 	b.SetEnabled(true)
-	NUM := 1000
+	NUM := 100
 
 	for i := 0; i < NUM; i++ {
 		eval1 := mock.Eval()
@@ -700,7 +503,7 @@ func TestEvalBroker_Dequeue_Fairness(t *testing.T) {
 
 		// This will fail randomly at times. It is very hard to
 		// test deterministically that its acting randomly.
-		if counter >= 250 || counter <= -250 {
+		if counter >= 25 || counter <= -25 {
 			t.Fatalf("unlikely sequence: %d", counter)
 		}
 	}
@@ -708,7 +511,6 @@ func TestEvalBroker_Dequeue_Fairness(t *testing.T) {
 
 // Ensure we get unblocked
 func TestEvalBroker_Dequeue_Blocked(t *testing.T) {
-	t.Parallel()
 	b := testBroker(t, 0)
 	b.SetEnabled(true)
 
@@ -747,7 +549,6 @@ func TestEvalBroker_Dequeue_Blocked(t *testing.T) {
 
 // Ensure we nack in a timely manner
 func TestEvalBroker_Nack_Timeout(t *testing.T) {
-	t.Parallel()
 	b := testBroker(t, 5*time.Millisecond)
 	b.SetEnabled(true)
 
@@ -783,8 +584,7 @@ func TestEvalBroker_Nack_Timeout(t *testing.T) {
 
 // Ensure we nack in a timely manner
 func TestEvalBroker_Nack_TimeoutReset(t *testing.T) {
-	t.Parallel()
-	b := testBroker(t, 50*time.Millisecond)
+	b := testBroker(t, 5*time.Millisecond)
 	b.SetEnabled(true)
 
 	// Enqueue
@@ -801,8 +601,8 @@ func TestEvalBroker_Nack_TimeoutReset(t *testing.T) {
 		t.Fatalf("bad: %v", out)
 	}
 
-	// Reset in 20 milliseconds
-	time.Sleep(20 * time.Millisecond)
+	// Reset in 2 milliseconds
+	time.Sleep(2 * time.Millisecond)
 	if err := b.OutstandingReset(out.ID, token); err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -818,14 +618,13 @@ func TestEvalBroker_Nack_TimeoutReset(t *testing.T) {
 	}
 
 	// Check the nack timer
-	if diff := end.Sub(start); diff < 75*time.Millisecond {
+	if diff := end.Sub(start); diff < 7*time.Millisecond {
 		t.Fatalf("bad: %#v", diff)
 	}
 }
 
 func TestEvalBroker_PauseResumeNackTimeout(t *testing.T) {
-	t.Parallel()
-	b := testBroker(t, 50*time.Millisecond)
+	b := testBroker(t, 5*time.Millisecond)
 	b.SetEnabled(true)
 
 	// Enqueue
@@ -842,14 +641,14 @@ func TestEvalBroker_PauseResumeNackTimeout(t *testing.T) {
 		t.Fatalf("bad: %v", out)
 	}
 
-	// Pause in 20 milliseconds
-	time.Sleep(20 * time.Millisecond)
+	// Pause in 2 milliseconds
+	time.Sleep(2 * time.Millisecond)
 	if err := b.PauseNackTimeout(out.ID, token); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 
 	go func() {
-		time.Sleep(20 * time.Millisecond)
+		time.Sleep(2 * time.Millisecond)
 		if err := b.ResumeNackTimeout(out.ID, token); err != nil {
 			t.Fatalf("err: %v", err)
 		}
@@ -866,13 +665,12 @@ func TestEvalBroker_PauseResumeNackTimeout(t *testing.T) {
 	}
 
 	// Check the nack timer
-	if diff := end.Sub(start); diff < 95*time.Millisecond {
+	if diff := end.Sub(start); diff < 9*time.Millisecond {
 		t.Fatalf("bad: %#v", diff)
 	}
 }
 
 func TestEvalBroker_DeliveryLimit(t *testing.T) {
-	t.Parallel()
 	b := testBroker(t, 0)
 	b.SetEnabled(true)
 
@@ -962,7 +760,6 @@ func TestEvalBroker_DeliveryLimit(t *testing.T) {
 }
 
 func TestEvalBroker_AckAtDeliveryLimit(t *testing.T) {
-	t.Parallel()
 	b := testBroker(t, 0)
 	b.SetEnabled(true)
 
@@ -1005,7 +802,6 @@ func TestEvalBroker_AckAtDeliveryLimit(t *testing.T) {
 
 // Ensure fairness between schedulers
 func TestEvalBroker_Wait(t *testing.T) {
-	t.Parallel()
 	b := testBroker(t, 0)
 	b.SetEnabled(true)
 
@@ -1024,7 +820,7 @@ func TestEvalBroker_Wait(t *testing.T) {
 	}
 
 	// Let the wait elapse
-	time.Sleep(20 * time.Millisecond)
+	time.Sleep(15 * time.Millisecond)
 
 	// Verify ready
 	stats = b.Stats()
@@ -1047,7 +843,6 @@ func TestEvalBroker_Wait(t *testing.T) {
 
 // Ensure that priority is taken into account when enqueueing many evaluations.
 func TestEvalBroker_EnqueueAll_Dequeue_Fair(t *testing.T) {
-	t.Parallel()
 	b := testBroker(t, 0)
 	b.SetEnabled(true)
 
@@ -1092,7 +887,6 @@ func TestEvalBroker_EnqueueAll_Dequeue_Fair(t *testing.T) {
 }
 
 func TestEvalBroker_EnqueueAll_Requeue_Ack(t *testing.T) {
-	t.Parallel()
 	b := testBroker(t, 0)
 	b.SetEnabled(true)
 
@@ -1149,7 +943,6 @@ func TestEvalBroker_EnqueueAll_Requeue_Ack(t *testing.T) {
 }
 
 func TestEvalBroker_EnqueueAll_Requeue_Nack(t *testing.T) {
-	t.Parallel()
 	b := testBroker(t, 0)
 	b.SetEnabled(true)
 
@@ -1183,20 +976,14 @@ func TestEvalBroker_EnqueueAll_Requeue_Nack(t *testing.T) {
 	}
 
 	// Check stats again as this should cause the re-enqueued one to be dropped
-	testutil.WaitForResult(func() (bool, error) {
-		stats = b.Stats()
-		if stats.TotalReady != 1 {
-			return false, fmt.Errorf("bad: %#v", stats)
-		}
-		if stats.TotalUnacked != 0 {
-			return false, fmt.Errorf("bad: %#v", stats)
-		}
-		if len(b.requeue) != 0 {
-			return false, fmt.Errorf("bad: %#v", b.requeue)
-		}
-
-		return true, nil
-	}, func(e error) {
-		t.Fatal(e)
-	})
+	stats = b.Stats()
+	if stats.TotalReady != 1 {
+		t.Fatalf("bad: %#v", stats)
+	}
+	if stats.TotalUnacked != 0 {
+		t.Fatalf("bad: %#v", stats)
+	}
+	if len(b.requeue) != 0 {
+		t.Fatalf("bad: %#v", b.requeue)
+	}
 }

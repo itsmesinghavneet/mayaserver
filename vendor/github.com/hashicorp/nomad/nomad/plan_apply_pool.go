@@ -31,7 +31,6 @@ type evaluateRequest struct {
 type evaluateResult struct {
 	nodeID string
 	fit    bool
-	reason string
 	err    error
 }
 
@@ -103,8 +102,8 @@ func (p *EvaluatePool) run(stopCh chan struct{}) {
 	for {
 		select {
 		case req := <-p.req:
-			fit, reason, err := evaluateNodePlan(req.snap, req.plan, req.nodeID)
-			p.res <- evaluateResult{req.nodeID, fit, reason, err}
+			fit, err := evaluateNodePlan(req.snap, req.plan, req.nodeID)
+			p.res <- evaluateResult{req.nodeID, fit, err}
 
 		case <-stopCh:
 			return

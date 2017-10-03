@@ -46,13 +46,8 @@ func TestParse(t *testing.T) {
 				},
 
 				Update: &api.UpdateStrategy{
-					Stagger:         helper.TimeToPtr(60 * time.Second),
-					MaxParallel:     helper.IntToPtr(2),
-					HealthCheck:     helper.StringToPtr("manual"),
-					MinHealthyTime:  helper.TimeToPtr(10 * time.Second),
-					HealthyDeadline: helper.TimeToPtr(10 * time.Minute),
-					AutoRevert:      helper.BoolToPtr(true),
-					Canary:          helper.IntToPtr(1),
+					Stagger:     60 * time.Second,
+					MaxParallel: 2,
 				},
 
 				TaskGroups: []*api.TaskGroup{
@@ -97,14 +92,6 @@ func TestParse(t *testing.T) {
 							Sticky: helper.BoolToPtr(true),
 							SizeMB: helper.IntToPtr(150),
 						},
-						Update: &api.UpdateStrategy{
-							MaxParallel:     helper.IntToPtr(3),
-							HealthCheck:     helper.StringToPtr("checks"),
-							MinHealthyTime:  helper.TimeToPtr(1 * time.Second),
-							HealthyDeadline: helper.TimeToPtr(1 * time.Minute),
-							AutoRevert:      helper.BoolToPtr(false),
-							Canary:          helper.IntToPtr(2),
-						},
 						Tasks: []*api.Task{
 							&api.Task{
 								Name:   "binstore",
@@ -148,8 +135,7 @@ func TestParse(t *testing.T) {
 										},
 									},
 								},
-								KillTimeout:   helper.TimeToPtr(22 * time.Second),
-								ShutdownDelay: 11 * time.Second,
+								KillTimeout: helper.TimeToPtr(22 * time.Second),
 								LogConfig: &api.LogConfig{
 									MaxFiles:      helper.IntToPtr(14),
 									MaxFileSizeMB: helper.IntToPtr(101),
@@ -167,7 +153,6 @@ func TestParse(t *testing.T) {
 										GetterOptions: map[string]string{
 											"checksum": "md5:ff1cc0d3432dad54d607c1505fb7245c",
 										},
-										GetterMode: helper.StringToPtr("file"),
 									},
 								},
 								Vault: &api.Vault{
@@ -183,8 +168,6 @@ func TestParse(t *testing.T) {
 										ChangeSignal: helper.StringToPtr("foo"),
 										Splay:        helper.TimeToPtr(10 * time.Second),
 										Perms:        helper.StringToPtr("0644"),
-										Envvars:      helper.BoolToPtr(true),
-										VaultGrace:   helper.TimeToPtr(33 * time.Second),
 									},
 									{
 										SourcePath: helper.StringToPtr("bar"),
@@ -450,14 +433,9 @@ func TestParse(t *testing.T) {
 											{
 												Name:          "check-name",
 												Type:          "http",
-												Path:          "/",
 												Interval:      10 * time.Second,
 												Timeout:       2 * time.Second,
 												InitialStatus: capi.HealthPassing,
-												Method:        "POST",
-												Header: map[string][]string{
-													"Authorization": {"Basic ZWxhc3RpYzpjaGFuZ2VtZQ=="},
-												},
 											},
 										},
 									},
@@ -468,16 +446,6 @@ func TestParse(t *testing.T) {
 				},
 			},
 			false,
-		},
-		{
-			"service-check-bad-header.hcl",
-			nil,
-			true,
-		},
-		{
-			"service-check-bad-header-2.hcl",
-			nil,
-			true,
 		},
 		{
 			// TODO This should be pushed into the API

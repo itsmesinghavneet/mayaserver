@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -83,7 +84,7 @@ func DefaultConsulConfig() *ConsulConfig {
 		AutoAdvertise:      helper.BoolToPtr(true),
 		ChecksUseAdvertise: helper.BoolToPtr(false),
 		EnableSSL:          helper.BoolToPtr(false),
-		VerifySSL:          helper.BoolToPtr(true),
+		VerifySSL:          helper.BoolToPtr(false),
 		ServerAutoJoin:     helper.BoolToPtr(true),
 		ClientAutoJoin:     helper.BoolToPtr(true),
 		Timeout:            5 * time.Second,
@@ -142,11 +143,9 @@ func (a *ConsulConfig) Merge(b *ConsulConfig) *ConsulConfig {
 	return result
 }
 
-// ApiConfig returns a usable Consul config that can be passed directly to
+// ApiConfig() returns a usable Consul config that can be passed directly to
 // hashicorp/consul/api.  NOTE: datacenter is not set
 func (c *ConsulConfig) ApiConfig() (*consul.Config, error) {
-	// Get the default config from consul to reuse things like the default
-	// http.Transport.
 	config := consul.DefaultConfig()
 	if c.Addr != "" {
 		config.Address = c.Addr
@@ -155,12 +154,7 @@ func (c *ConsulConfig) ApiConfig() (*consul.Config, error) {
 		config.Token = c.Token
 	}
 	if c.Timeout != 0 {
-		// Create a custom Client to set the timeout
-		if config.HttpClient == nil {
-			config.HttpClient = &http.Client{}
-		}
 		config.HttpClient.Timeout = c.Timeout
-		config.HttpClient.Transport = config.Transport
 	}
 	if c.Auth != "" {
 		var username, password string
@@ -179,20 +173,23 @@ func (c *ConsulConfig) ApiConfig() (*consul.Config, error) {
 	}
 	if c.EnableSSL != nil && *c.EnableSSL {
 		config.Scheme = "https"
-		config.TLSConfig = consul.TLSConfig{
+		tlsConfig := consul.TLSConfig{
 			Address:  config.Address,
 			CAFile:   c.CAFile,
 			CertFile: c.CertFile,
 			KeyFile:  c.KeyFile,
 		}
 		if c.VerifySSL != nil {
-			config.TLSConfig.InsecureSkipVerify = !*c.VerifySSL
+			tlsConfig.InsecureSkipVerify = !*c.VerifySSL
 		}
-		tlsConfig, err := consul.SetupTLSConfig(&config.TLSConfig)
+
+		tlsClientCfg, err := consul.SetupTLSConfig(&tlsConfig)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("error creating tls client config for consul: %v", err)
 		}
-		config.Transport.TLSClientConfig = tlsConfig
+		config.HttpClient.Transport = &http.Transport{
+			TLSClientConfig: tlsClientCfg,
+		}
 	}
 
 	return config, nil

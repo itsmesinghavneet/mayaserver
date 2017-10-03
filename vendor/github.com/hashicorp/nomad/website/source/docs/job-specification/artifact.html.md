@@ -30,7 +30,7 @@ job "docs" {
     task "server" {
       artifact {
         source      = "https://example.com/file.tar.gz"
-        destination = "/tmp/directory"
+        destination = "/tmp/file"
         options {
           checksum = "md5:df6a4178aec9fbdc1d6d7e3634d1bc33"
         }
@@ -41,20 +41,15 @@ job "docs" {
 ```
 
 Nomad supports downloading `http`, `https`, `git`, `hg` and `S3` artifacts. If
-these artifacts are archived (`zip`, `tgz`, `bz2`, `xz`), they are
-automatically unarchived before the starting the task.
+these artifacts are archived (`zip`, `tgz`, `bz2`), they are automatically
+unarchived before the starting the task.
 
 ## `artifact` Parameters
 
-- `destination` `(string: "local/")` - Specifies the directory path to download
-  the artifact, relative to the root of the task's directory. If omitted, the
-  default value is to place the artifact in `local/`. The destination is treated
-  as a directory unless `mode` is set to `file`. Source files will be downloaded
-  into that directory path.
-
-- `mode` `(string: "any")` - One of `any`, `file`, or `dir`. If set to `file`
-  the `destination` must be a file, not a directory. By default the
-  `destination` will be `local/<filename>`.
+- `destination` `(string: "local/$1")` - Specifies the path to download the
+  artifact, relative to the root of the task's directory. If omitted, the
+  default value is to place the binary in `local/`. The destination is treated
+  as a directory and source files will be downloaded into that directory path.
 
 - `options` `(map<string|string>: nil)` - Specifies configuration parameters to
   fetch the artifact. The key-value pairs map directly to parameters appended to
@@ -83,18 +78,18 @@ artifact {
 ### Download with Custom Destination
 
 This example downloads the artifact from the provided URL and places it at
-`/tmp/example/file.txt`, as specified by the optional `destination` parameter.
+`/tmp/example.txt`, as specified by the optional `destination` parameter.
 
 ```hcl
 artifact {
   source      = "https://example.com/file.txt"
-  destination = "/tmp/example"
+  destination = "/tmp/example.txt"
 }
 ```
 
 ### Download using git
 
-This example downloads the artifact from the provided GitHub URL and places it at
+This example downloads the artifact from the provided github url and places it at
 `local/repo`, as specified by the optional `destination` parameter.
 
 ```hcl
@@ -104,7 +99,7 @@ artifact {
 }
 ```
 
-To download from private repo, sshkey need to be set. The key must be
+To download from private repo, sshkeys need to be set. The key must be
 base64-encoded string. Run `base64 -w0 <file>`
 
 ```hcl
@@ -112,7 +107,7 @@ artifact {
   source      = "git@github.com:example/nomad-examples"
   destination = "local/repo"
   options {
-    sshkey = "<string>"
+    sshkeys = "<string>"
   }
 }
 ```
@@ -155,13 +150,11 @@ artifact {
 }
 ```
 
-### Download from an S3-compatible Bucket
+### Download from an S3 Bucket
 
 These examples download artifacts from Amazon S3. There are several different
 types of [S3 bucket addressing][s3-bucket-addr] and [S3 region-specific
-endpoints][s3-region-endpoints]. As of Nomad 0.6 non-Amazon S3-compatible
-endpoints like [Minio] are supported, but you must explicitly set the "s3::"
-prefix.
+endpoints][s3-region-endpoints].
 
 This example uses path-based notation on a publicly-accessible bucket:
 
@@ -201,6 +194,5 @@ artifact {
 ```
 
 [go-getter]: https://github.com/hashicorp/go-getter "HashiCorp go-getter Library"
-[Minio]: https://www.minio.io/
 [s3-bucket-addr]: http://docs.aws.amazon.com/AmazonS3/latest/dev/UsingBucket.html#access-bucket-intro "Amazon S3 Bucket Addressing"
 [s3-region-endpoints]: http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region "Amazon S3 Region Endpoints"

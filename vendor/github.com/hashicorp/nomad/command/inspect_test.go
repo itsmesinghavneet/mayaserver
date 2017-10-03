@@ -4,21 +4,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/nomad/nomad/mock"
 	"github.com/mitchellh/cli"
-	"github.com/posener/complete"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestInspectCommand_Implements(t *testing.T) {
-	t.Parallel()
 	var _ cli.Command = &InspectCommand{}
 }
 
 func TestInspectCommand_Fails(t *testing.T) {
-	t.Parallel()
-	srv, _, url := testServer(t, false, nil)
-	defer srv.Shutdown()
+	srv, _, url := testServer(t, nil)
+	defer srv.Stop()
 
 	ui := new(cli.MockUi)
 	cmd := &InspectCommand{Meta: Meta{Ui: ui}}
@@ -54,30 +49,7 @@ func TestInspectCommand_Fails(t *testing.T) {
 	if code := cmd.Run([]string{"-address=" + url, "-json", "-t", "{{.ID}}"}); code != 1 {
 		t.Fatalf("expected exit 1, got: %d", code)
 	}
-	if out := ui.ErrorWriter.String(); !strings.Contains(out, "Both json and template formatting are not allowed") {
+	if out := ui.ErrorWriter.String(); !strings.Contains(out, "Both -json and -t are not allowed") {
 		t.Fatalf("expected getting formatter error, got: %s", out)
 	}
-}
-
-func TestInspectCommand_AutocompleteArgs(t *testing.T) {
-	assert := assert.New(t)
-	t.Parallel()
-
-	srv, _, url := testServer(t, true, nil)
-	defer srv.Shutdown()
-
-	ui := new(cli.MockUi)
-	cmd := &InspectCommand{Meta: Meta{Ui: ui, flagAddress: url}}
-
-	state := srv.Agent.Server().State()
-	j := mock.Job()
-	assert.Nil(state.UpsertJob(1000, j))
-
-	prefix := j.ID[:len(j.ID)-5]
-	args := complete.Args{Last: prefix}
-	predictor := cmd.AutocompleteArgs()
-
-	res := predictor.Predict(args)
-	assert.Equal(1, len(res))
-	assert.Equal(j.ID, res[0])
 }

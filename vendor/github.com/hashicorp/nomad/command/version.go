@@ -1,14 +1,18 @@
 package command
 
 import (
-	"github.com/hashicorp/nomad/version"
+	"bytes"
+	"fmt"
+
 	"github.com/mitchellh/cli"
 )
 
 // VersionCommand is a Command implementation prints the version.
 type VersionCommand struct {
-	Version *version.VersionInfo
-	Ui      cli.Ui
+	Revision          string
+	Version           string
+	VersionPrerelease string
+	Ui                cli.Ui
 }
 
 func (c *VersionCommand) Help() string {
@@ -16,7 +20,18 @@ func (c *VersionCommand) Help() string {
 }
 
 func (c *VersionCommand) Run(_ []string) int {
-	c.Ui.Output(c.Version.FullVersionNumber(true))
+	var versionString bytes.Buffer
+
+	fmt.Fprintf(&versionString, "Nomad v%s", c.Version)
+	if c.VersionPrerelease != "" {
+		fmt.Fprintf(&versionString, "-%s", c.VersionPrerelease)
+
+		if c.Revision != "" {
+			fmt.Fprintf(&versionString, " (%s)", c.Revision)
+		}
+	}
+
+	c.Ui.Output(versionString.String())
 	return 0
 }
 

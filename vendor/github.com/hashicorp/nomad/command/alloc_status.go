@@ -8,13 +8,11 @@ import (
 	"strings"
 	"time"
 
-	humanize "github.com/dustin/go-humanize"
+	"github.com/dustin/go-humanize"
 	"github.com/mitchellh/colorstring"
 
 	"github.com/hashicorp/nomad/api"
-	"github.com/hashicorp/nomad/api/contexts"
 	"github.com/hashicorp/nomad/client"
-	"github.com/posener/complete"
 )
 
 type AllocStatusCommand struct {
@@ -60,31 +58,6 @@ func (c *AllocStatusCommand) Synopsis() string {
 	return "Display allocation status information and metadata"
 }
 
-func (c *AllocStatusCommand) AutocompleteFlags() complete.Flags {
-	return mergeAutocompleteFlags(c.Meta.AutocompleteFlags(FlagSetClient),
-		complete.Flags{
-			"-short":   complete.PredictNothing,
-			"-verbose": complete.PredictNothing,
-			"-json":    complete.PredictNothing,
-			"-t":       complete.PredictAnything,
-		})
-}
-
-func (c *AllocStatusCommand) AutocompleteArgs() complete.Predictor {
-	return complete.PredictFunc(func(a complete.Args) []string {
-		client, err := c.Meta.Client()
-		if err != nil {
-			return nil
-		}
-
-		resp, _, err := client.Search().PrefixSearch(a.Last, contexts.Allocs, nil)
-		if err != nil {
-			return []string{}
-		}
-		return resp.Matches[contexts.Allocs]
-	})
-}
-
 func (c *AllocStatusCommand) Run(args []string) int {
 	var short, displayStats, verbose, json bool
 	var tmpl string
@@ -112,21 +85,41 @@ func (c *AllocStatusCommand) Run(args []string) int {
 	}
 
 	// If args not specified but output format is specified, format and output the allocations data list
-	if len(args) == 0 && json || len(tmpl) > 0 {
-		allocs, _, err := client.Allocations().List(nil)
-		if err != nil {
-			c.Ui.Error(fmt.Sprintf("Error querying allocations: %v", err))
+	if len(args) == 0 {
+		var format string
+		if json && len(tmpl) > 0 {
+			c.Ui.Error("Both -json and -t are not allowed")
 			return 1
+		} else if json {
+			format = "json"
+		} else if len(tmpl) > 0 {
+			format = "template"
 		}
+		if len(format) > 0 {
+			allocs, _, err := client.Allocations().List(nil)
+			if err != nil {
+				c.Ui.Error(fmt.Sprintf("Error querying allocations: %v", err))
+				return 1
+			}
+			// Return nothing if no allocations found
+			if len(allocs) == 0 {
+				return 0
+			}
 
-		out, err := Format(json, tmpl, allocs)
-		if err != nil {
-			c.Ui.Error(err.Error())
-			return 1
+			f, err := DataFormat(format, tmpl)
+			if err != nil {
+				c.Ui.Error(fmt.Sprintf("Error getting formatter: %s", err))
+				return 1
+			}
+
+			out, err := f.TransformData(allocs)
+			if err != nil {
+				c.Ui.Error(fmt.Sprintf("Error formatting the data: %s", err))
+				return 1
+			}
+			c.Ui.Output(out)
+			return 0
 		}
-
-		c.Ui.Output(out)
-		return 0
 	}
 
 	if len(args) != 1 {
@@ -146,8 +139,12 @@ func (c *AllocStatusCommand) Run(args []string) int {
 		c.Ui.Error(fmt.Sprintf("Identifier must contain at least two characters."))
 		return 1
 	}
+	if len(allocID)%2 == 1 {
+		// Identifiers must be of even length, so we strip off the last byte
+		// to provide a consistent user experience.
+		allocID = allocID[:len(allocID)-1]
+	}
 
-	allocID = sanatizeUUIDPrefix(allocID)
 	allocs, _, err := client.Allocations().PrefixList(allocID)
 	if err != nil {
 		c.Ui.Error(fmt.Sprintf("Error querying allocation: %v", err))
@@ -158,8 +155,20 @@ func (c *AllocStatusCommand) Run(args []string) int {
 		return 1
 	}
 	if len(allocs) > 1 {
-		out := formatAllocListStubs(allocs, verbose, length)
-		c.Ui.Output(fmt.Sprintf("Prefix matched multiple allocations\n\n%s", out))
+		// Format the allocs
+		out := make([]string, len(allocs)+1)
+		out[0] = "ID|Eval ID|Job ID|Task Group|Desired Status|Client Status"
+		for i, alloc := range allocs {
+			out[i+1] = fmt.Sprintf("%s|%s|%s|%s|%s|%s",
+				limit(alloc.ID, length),
+				limit(alloc.EvalID, length),
+				alloc.JobID,
+				alloc.TaskGroup,
+				alloc.DesiredStatus,
+				alloc.ClientStatus,
+			)
+		}
+		c.Ui.Output(fmt.Sprintf("Prefix matched multiple allocations\n\n%s", formatList(out)))
 		return 0
 	}
 	// Prefix lookup matched a single allocation
@@ -170,24 +179,54 @@ func (c *AllocStatusCommand) Run(args []string) int {
 	}
 
 	// If output format is specified, format and output the data
-	if json || len(tmpl) > 0 {
-		out, err := Format(json, tmpl, alloc)
+	var format string
+	if json && len(tmpl) > 0 {
+		c.Ui.Error("Both -json and -t are not allowed")
+		return 1
+	} else if json {
+		format = "json"
+	} else if len(tmpl) > 0 {
+		format = "template"
+	}
+	if len(format) > 0 {
+		f, err := DataFormat(format, tmpl)
 		if err != nil {
-			c.Ui.Error(err.Error())
+			c.Ui.Error(fmt.Sprintf("Error getting formatter: %s", err))
 			return 1
 		}
 
+		out, err := f.TransformData(alloc)
+		if err != nil {
+			c.Ui.Error(fmt.Sprintf("Error formatting the data: %s", err))
+			return 1
+		}
 		c.Ui.Output(out)
 		return 0
 	}
 
 	// Format the allocation data
-	output, err := formatAllocBasicInfo(alloc, client, length, verbose)
-	if err != nil {
-		c.Ui.Error(err.Error())
-		return 1
+	basic := []string{
+		fmt.Sprintf("ID|%s", limit(alloc.ID, length)),
+		fmt.Sprintf("Eval ID|%s", limit(alloc.EvalID, length)),
+		fmt.Sprintf("Name|%s", alloc.Name),
+		fmt.Sprintf("Node ID|%s", limit(alloc.NodeID, length)),
+		fmt.Sprintf("Job ID|%s", alloc.JobID),
+		fmt.Sprintf("Client Status|%s", alloc.ClientStatus),
+		fmt.Sprintf("Client Description|%s", alloc.ClientDescription),
+		fmt.Sprintf("Desired Status|%s", alloc.DesiredStatus),
+		fmt.Sprintf("Desired Description|%s", alloc.DesiredDescription),
+		fmt.Sprintf("Created At|%s", formatUnixNanoTime(alloc.CreateTime)),
 	}
-	c.Ui.Output(output)
+
+	if verbose {
+		basic = append(basic,
+			fmt.Sprintf("Evaluated Nodes|%d", alloc.Metrics.NodesEvaluated),
+			fmt.Sprintf("Filtered Nodes|%d", alloc.Metrics.NodesFiltered),
+			fmt.Sprintf("Exhausted Nodes|%d", alloc.Metrics.NodesExhausted),
+			fmt.Sprintf("Allocation Time|%s", alloc.Metrics.AllocationTime),
+			fmt.Sprintf("Failures|%d", alloc.Metrics.CoalescedFailures))
+	}
+	c.Ui.Output(formatKV(basic))
 
 	if short {
 		c.shortTaskStatus(alloc)
@@ -215,68 +254,6 @@ func (c *AllocStatusCommand) Run(args []string) int {
 	return 0
 }
 
-func formatAllocBasicInfo(alloc *api.Allocation, client *api.Client, uuidLength int, verbose bool) (string, error) {
-	basic := []string{
-		fmt.Sprintf("ID|%s", limit(alloc.ID, uuidLength)),
-		fmt.Sprintf("Eval ID|%s", limit(alloc.EvalID, uuidLength)),
-		fmt.Sprintf("Name|%s", alloc.Name),
-		fmt.Sprintf("Node ID|%s", limit(alloc.NodeID, uuidLength)),
-		fmt.Sprintf("Job ID|%s", alloc.JobID),
-		fmt.Sprintf("Job Version|%d", getVersion(alloc.Job)),
-		fmt.Sprintf("Client Status|%s", alloc.ClientStatus),
-		fmt.Sprintf("Client Description|%s", alloc.ClientDescription),
-		fmt.Sprintf("Desired Status|%s", alloc.DesiredStatus),
-		fmt.Sprintf("Desired Description|%s", alloc.DesiredDescription),
-		fmt.Sprintf("Created At|%s", formatUnixNanoTime(alloc.CreateTime)),
-	}
-
-	if alloc.DeploymentID != "" {
-		health := "unset"
-		if alloc.DeploymentStatus != nil && alloc.DeploymentStatus.Healthy != nil {
-			if *alloc.DeploymentStatus.Healthy {
-				health = "healthy"
-			} else {
-				health = "unhealthy"
-			}
-		}
-
-		basic = append(basic,
-			fmt.Sprintf("Deployment ID|%s", limit(alloc.DeploymentID, uuidLength)),
-			fmt.Sprintf("Deployment Health|%s", health))
-
-		// Check if this allocation is a canary
-		deployment, _, err := client.Deployments().Info(alloc.DeploymentID, nil)
-		if err != nil {
-			return "", fmt.Errorf("Error querying deployment %q: %s", alloc.DeploymentID, err)
-		}
-
-		canary := false
-		if state, ok := deployment.TaskGroups[alloc.TaskGroup]; ok {
-			for _, id := range state.PlacedCanaries {
-				if id == alloc.ID {
-					canary = true
-					break
-				}
-			}
-		}
-
-		if canary {
-			basic = append(basic, fmt.Sprintf("Canary|%v", true))
-		}
-	}
-
-	if verbose {
-		basic = append(basic,
-			fmt.Sprintf("Evaluated Nodes|%d", alloc.Metrics.NodesEvaluated),
-			fmt.Sprintf("Filtered Nodes|%d", alloc.Metrics.NodesFiltered),
-			fmt.Sprintf("Exhausted Nodes|%d", alloc.Metrics.NodesExhausted),
-			fmt.Sprintf("Allocation Time|%s", alloc.Metrics.AllocationTime),
-			fmt.Sprintf("Failures|%d", alloc.Metrics.CoalescedFailures))
-	}
-
-	return formatKV(basic), nil
-}
-
 // outputTaskDetails prints task details for each task in the allocation,
 // optionally printing verbose statistics if displayStats is set
 func (c *AllocStatusCommand) outputTaskDetails(alloc *api.Allocation, stats *api.AllocResourceUsage, displayStats bool) {
@@ -289,27 +266,9 @@ func (c *AllocStatusCommand) outputTaskDetails(alloc *api.Allocation, stats *api
 	}
 }
 
-func formatTaskTimes(t time.Time) string {
-	if t.IsZero() {
-		return "N/A"
-	}
-
-	return formatTime(t)
-}
-
 // outputTaskStatus prints out a list of the most recent events for the given
 // task state.
 func (c *AllocStatusCommand) outputTaskStatus(state *api.TaskState) {
-	basic := []string{
-		fmt.Sprintf("Started At|%s", formatTaskTimes(state.StartedAt)),
-		fmt.Sprintf("Finished At|%s", formatTaskTimes(state.FinishedAt)),
-		fmt.Sprintf("Total Restarts|%d", state.Restarts),
-		fmt.Sprintf("Last Restart|%s", formatTaskTimes(state.LastRestart))}
-
-	c.Ui.Output("Task Events:")
-	c.Ui.Output(formatKV(basic))
-	c.Ui.Output("")
-
 	c.Ui.Output("Recent Events:")
 	events := make([]string, len(state.Events)+1)
 	events[0] = "Time|Type|Description"
@@ -421,9 +380,6 @@ func (c *AllocStatusCommand) outputTaskStatus(state *api.TaskState) {
 			desc = event.DriverMessage
 		case api.TaskLeaderDead:
 			desc = "Leader Task in Group dead"
-		case api.TaskGenericMessage:
-			event.Type = event.GenericSource
-			desc = event.Message
 		}
 
 		// Reverse order so we are sorted by time

@@ -8,7 +8,6 @@ import (
 )
 
 func TestFS_FrameReader(t *testing.T) {
-	t.Parallel()
 	// Create a channel of the frames and a cancel channel
 	framesCh := make(chan *StreamFrame, 3)
 	cancelCh := make(chan struct{})
@@ -77,7 +76,6 @@ func TestFS_FrameReader(t *testing.T) {
 }
 
 func TestFS_FrameReader_Unblock(t *testing.T) {
-	t.Parallel()
 	// Create a channel of the frames and a cancel channel
 	framesCh := make(chan *StreamFrame, 3)
 	cancelCh := make(chan struct{})

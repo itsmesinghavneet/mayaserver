@@ -11,7 +11,6 @@ import (
 )
 
 func TestPlanEndpoint_Submit(t *testing.T) {
-	t.Parallel()
 	s1 := testServer(t, func(c *Config) {
 		c.NumSchedulers = 0
 	})

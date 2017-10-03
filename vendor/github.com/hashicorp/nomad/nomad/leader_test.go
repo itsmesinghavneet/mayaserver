@@ -328,12 +328,10 @@ func TestLeader_PeriodicDispatcher_Restore_Adds(t *testing.T) {
 		t.Fatalf("Should have a leader")
 	}
 
-	// Inject a periodic job, a parameterized periodic job and a non-periodic job
+	// Inject a periodic job and non-periodic job
 	periodic := mock.PeriodicJob()
 	nonPeriodic := mock.Job()
-	parameterizedPeriodic := mock.PeriodicJob()
-	parameterizedPeriodic.ParameterizedJob = &structs.ParameterizedJobConfig{}
-	for _, job := range []*structs.Job{nonPeriodic, periodic, parameterizedPeriodic} {
+	for _, job := range []*structs.Job{nonPeriodic, periodic} {
 		req := structs.JobRegisterRequest{
 			Job: job,
 		}
@@ -361,20 +359,12 @@ func TestLeader_PeriodicDispatcher_Restore_Adds(t *testing.T) {
 		t.Fatalf("should have leader")
 	})
 
-	// Check that the new leader is tracking the periodic job only
+	// Check that the new leader is tracking the periodic job.
 	testutil.WaitForResult(func() (bool, error) {
-		if _, tracked := leader.periodicDispatcher.tracked[periodic.ID]; !tracked {
-			return false, fmt.Errorf("periodic job not tracked")
-		}
-		if _, tracked := leader.periodicDispatcher.tracked[nonPeriodic.ID]; tracked {
-			return false, fmt.Errorf("non periodic job tracked")
-		}
-		if _, tracked := leader.periodicDispatcher.tracked[parameterizedPeriodic.ID]; tracked {
-			return false, fmt.Errorf("parameterized periodic job tracked")
-		}
-		return true, nil
+		_, tracked := leader.periodicDispatcher.tracked[periodic.ID]
+		return tracked, nil
 	}, func(err error) {
-		t.Fatalf(err.Error())
+		t.Fatalf("periodic job not tracked")
 	})
 }
 
@@ -408,6 +398,7 @@ func TestLeader_PeriodicDispatcher_Restore_NoEvals(t *testing.T) {
 
 	// Restore the periodic dispatcher.
 	s1.periodicDispatcher.SetEnabled(true)
+	s1.periodicDispatcher.Start()
 	s1.restorePeriodicDispatcher()
 
 	// Ensure the job is tracked.
@@ -459,6 +450,7 @@ func TestLeader_PeriodicDispatcher_Restore_Evals(t *testing.T) {
 
 	// Restore the periodic dispatcher.
 	s1.periodicDispatcher.SetEnabled(true)
+	s1.periodicDispatcher.Start()
 	s1.restorePeriodicDispatcher()
 
 	// Ensure the job is tracked.
@@ -516,7 +508,7 @@ func TestLeader_ReapFailedEval(t *testing.T) {
 	}
 	s1.evalBroker.Nack(out.ID, token)
 
-	// Wait for an updated and followup evaluation
+	// Wait updated evaluation
 	state := s1.fsm.State()
 	testutil.WaitForResult(func() (bool, error) {
 		ws := memdb.NewWatchSet()
@@ -524,45 +516,7 @@ func TestLeader_ReapFailedEval(t *testing.T) {
 		if err != nil {
 			return false, err
 		}
-		if out == nil {
-			return false, fmt.Errorf("expect original evaluation to exist")
-		}
-		if out.Status != structs.EvalStatusFailed {
-			return false, fmt.Errorf("got status %v; want %v", out.Status, structs.EvalStatusFailed)
-		}
-
-		// See if there is a followup
-		evals, err := state.EvalsByJob(ws, eval.JobID)
-		if err != nil {
-			return false, err
-		}
-
-		if l := len(evals); l != 2 {
-			return false, fmt.Errorf("got %d evals, want 2", l)
-		}
-
-		for _, e := range evals {
-			if e.ID == eval.ID {
-				continue
-			}
-
-			if e.Status != structs.EvalStatusPending {
-				return false, fmt.Errorf("follow up eval has status %v; want %v",
-					e.Status, structs.EvalStatusPending)
-			}
-
-			if e.Wait < s1.config.EvalFailedFollowupBaselineDelay ||
-				e.Wait > s1.config.EvalFailedFollowupBaselineDelay+s1.config.EvalFailedFollowupDelayRange {
-				return false, fmt.Errorf("bad wait: %v", e.Wait)
-			}
-
-			if e.TriggeredBy != structs.EvalTriggerFailedFollowUp {
-				return false, fmt.Errorf("follow up eval TriggeredBy %v; want %v",
-					e.TriggeredBy, structs.EvalTriggerFailedFollowUp)
-			}
-		}
-
-		return true, nil
+		return out != nil && out.Status == structs.EvalStatusFailed, nil
 	}, func(err error) {
 		t.Fatalf("err: %v", err)
 	})

@@ -3,7 +3,6 @@
 package driver
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -150,7 +149,6 @@ func (d *LxcDriver) Validate(config map[string]interface{}) error {
 func (d *LxcDriver) Abilities() DriverAbilities {
 	return DriverAbilities{
 		SendSignals: false,
-		Exec:        false,
 	}
 }
 
@@ -173,12 +171,12 @@ func (d *LxcDriver) Fingerprint(cfg *config.Config, node *structs.Node) (bool, e
 	return true, nil
 }
 
-func (d *LxcDriver) Prestart(*ExecContext, *structs.Task) (*PrestartResponse, error) {
+func (d *LxcDriver) Prestart(*ExecContext, *structs.Task) (*CreatedResources, error) {
 	return nil, nil
 }
 
 // Start starts the LXC Driver
-func (d *LxcDriver) Start(ctx *ExecContext, task *structs.Task) (*StartResponse, error) {
+func (d *LxcDriver) Start(ctx *ExecContext, task *structs.Task) (DriverHandle, error) {
 	var driverConfig LxcDriverConfig
 	if err := mapstructure.WeakDecode(task.Config, &driverConfig); err != nil {
 		return nil, err
@@ -269,7 +267,7 @@ func (d *LxcDriver) Start(ctx *ExecContext, task *structs.Task) (*StartResponse,
 		return nil, fmt.Errorf("unable to set cpu shares: %v", err)
 	}
 
-	h := lxcDriverHandle{
+	handle := lxcDriverHandle{
 		container:      c,
 		initPid:        c.InitPid(),
 		lxcPath:        lxcPath,
@@ -283,9 +281,9 @@ func (d *LxcDriver) Start(ctx *ExecContext, task *structs.Task) (*StartResponse,
 		doneCh:         make(chan bool, 1),
 	}
 
-	go h.run()
+	go handle.run()
 
-	return &StartResponse{Handle: &h}, nil
+	return &handle, nil
 }
 
 func (d *LxcDriver) Cleanup(*ExecContext, *CreatedResources) error { return nil }
@@ -377,21 +375,14 @@ func (h *lxcDriverHandle) Update(task *structs.Task) error {
 	return nil
 }
 
-func (h *lxcDriverHandle) Exec(ctx context.Context, cmd string, args []string) ([]byte, int, error) {
-	return nil, 0, fmt.Errorf("lxc driver cannot execute commands")
-}
-
 func (h *lxcDriverHandle) Kill() error {
-	name := h.container.Name()
-
-	h.logger.Printf("[INFO] driver.lxc: shutting down container %q", name)
+	h.logger.Printf("[INFO] driver.lxc: shutting down container %q", h.container.Name())
 	if err := h.container.Shutdown(h.killTimeout); err != nil {
-		h.logger.Printf("[INFO] driver.lxc: shutting down container %q failed: %v", name, err)
+		h.logger.Printf("[INFO] driver.lxc: shutting down container %q failed: %v", h.container.Name(), err)
 		if err := h.container.Stop(); err != nil {
-			h.logger.Printf("[ERR] driver.lxc: error stopping container %q: %v", name, err)
+			h.logger.Printf("[ERR] driver.lxc: error stopping container %q: %v", h.container.Name(), err)
 		}
 	}
-
 	close(h.doneCh)
 	return nil
 }

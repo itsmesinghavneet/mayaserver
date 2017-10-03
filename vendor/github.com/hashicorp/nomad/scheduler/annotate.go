@@ -19,7 +19,6 @@ const (
 	UpdateTypeCreate            = "create"
 	UpdateTypeDestroy           = "destroy"
 	UpdateTypeMigrate           = "migrate"
-	UpdateTypeCanary            = "canary"
 	UpdateTypeInplaceUpdate     = "in-place update"
 	UpdateTypeDestructiveUpdate = "create/destroy update"
 )
@@ -71,9 +70,6 @@ func annotateTaskGroup(diff *structs.TaskGroupDiff, annotations *structs.PlanAnn
 			}
 			if tg.Stop != 0 {
 				diff.Updates[UpdateTypeDestroy] = tg.Stop
-			}
-			if tg.Canary != 0 {
-				diff.Updates[UpdateTypeCanary] = tg.Canary
 			}
 			if tg.InPlaceUpdate != 0 {
 				diff.Updates[UpdateTypeInplaceUpdate] = tg.InPlaceUpdate

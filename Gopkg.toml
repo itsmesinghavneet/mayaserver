@@ -58,6 +58,10 @@
   name = "github.com/mitchellh/mapstructure"
 
 [[constraint]]
+  name = "github.com/hashicorp/nomad"
+  version = "0.5.5"
+
+[[constraint]]
   name = "github.com/openebs/maya"
   version = "0.4.0"
 
@@ -68,3 +72,25 @@
 [[constraint]]
   name = "github.com/prometheus/client_golang"
   version = "0.8.0"
+
+[[constraint]]
+  name = "k8s.io/apimachinery"
+  revision = "1fd2e63a9a370677308a42f24fd40c86438afddf"
+
+[[constraint]]
+  name = "k8s.io/client-go"
+  version = "~4.0"
+
+[[override]]
+  name = "k8s.io/apimachinery"
+  revision = "1fd2e63a9a370677308a42f24fd40c86438afddf"
+
+[[override]]
+  name = "github.com/ugorji/go"
+  revision = "8c0409fcbb70099c748d71f714529204975f6c3f"
+
+[[override]]
+  name = "github.com/hashicorp/nomad"
+  version = "0.5.5"
+
+

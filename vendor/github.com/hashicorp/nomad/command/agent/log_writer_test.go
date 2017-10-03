@@ -13,7 +13,6 @@ func (m *MockLogHandler) HandleLog(l string) {
 }
 
 func TestLogWriter(t *testing.T) {
-	t.Parallel()
 	h := &MockLogHandler{}
 	w := NewLogWriter(4)
 

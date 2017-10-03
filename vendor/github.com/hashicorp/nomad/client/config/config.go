@@ -12,7 +12,6 @@ import (
 	"github.com/hashicorp/nomad/helper/tlsutil"
 	"github.com/hashicorp/nomad/nomad/structs"
 	"github.com/hashicorp/nomad/nomad/structs/config"
-	"github.com/hashicorp/nomad/version"
 )
 
 var (
@@ -130,7 +129,10 @@ type Config struct {
 	Options map[string]string
 
 	// Version is the version of the Nomad client
-	Version *version.VersionInfo
+	Version string
+
+	// Revision is the commit number of the Nomad client
+	Revision string
 
 	// ConsulConfig is this Agent's Consul configuration
 	ConsulConfig *config.ConsulConfig
@@ -169,10 +171,6 @@ type Config struct {
 	// beyond which the Nomad client triggers GC of the terminal allocations
 	GCInodeUsageThreshold float64
 
-	// GCMaxAllocs is the maximum number of allocations a node can have
-	// before garbage collection is triggered.
-	GCMaxAllocs int
-
 	// LogLevel is the level of the logs to putout
 	LogLevel string
 
@@ -196,7 +194,6 @@ func (c *Config) Copy() *Config {
 // DefaultConfig returns the default configuration
 func DefaultConfig() *Config {
 	return &Config{
-		Version:                 version.GetVersion(),
 		VaultConfig:             config.DefaultVaultConfig(),
 		ConsulConfig:            config.DefaultConsulConfig(),
 		LogOutput:               os.Stderr,
@@ -208,8 +205,6 @@ func DefaultConfig() *Config {
 		GCParallelDestroys:      2,
 		GCDiskUsageThreshold:    80,
 		GCInodeUsageThreshold:   70,
-		GCMaxAllocs:             50,
-		NoHostUUID:              true,
 	}
 }
 

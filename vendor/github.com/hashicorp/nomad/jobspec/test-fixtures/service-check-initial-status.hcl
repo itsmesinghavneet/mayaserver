@@ -11,15 +11,9 @@ job "check_initial_status" {
             check {
               name     = "check-name"
               type     = "http"
-              path     = "/"
-              method   = "POST"
               interval = "10s"
               timeout  = "2s"
               initial_status = "passing"
-
-              header {
-                Authorization = ["Basic ZWxhc3RpYzpjaGFuZ2VtZQ=="]
-              }
             }
           }
         }

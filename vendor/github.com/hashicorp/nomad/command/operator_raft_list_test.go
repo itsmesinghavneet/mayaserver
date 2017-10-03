@@ -8,14 +8,12 @@ import (
 )
 
 func TestOperator_Raft_ListPeers_Implements(t *testing.T) {
-	t.Parallel()
 	var _ cli.Command = &OperatorRaftListCommand{}
 }
 
 func TestOperator_Raft_ListPeers(t *testing.T) {
-	t.Parallel()
-	s, _, addr := testServer(t, false, nil)
-	defer s.Shutdown()
+	s, _, addr := testServer(t, nil)
+	defer s.Stop()
 
 	ui := new(cli.MockUi)
 	c := &OperatorRaftListCommand{Meta: Meta{Ui: ui}}

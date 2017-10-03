@@ -12,17 +12,14 @@ description: |-
 ## Resources (RAM, CPU, etc.)
 
 **Nomad servers** may need to be run on large machine instances. We suggest
-having between 4-8+ cores, 16-32 GB+ of memory, 40-80 GB+ of disk and
-significant network bandwidth. The core count and network recommendations are to
-ensure high throughput as Nomad heavily relies on network communication and as
-the Servers are managing all the nodes in the region and performing scheduling.
-The memory and disk requirements are due to the fact that Nomad stores all state
-in memory and will store two snapshots of this data onto disk. Thus disk should
-be at least 2 times the memory available to the server when deploying a high
-load cluster.
-
-These recommendations are guidelines and operators should always monitor the
-resource usage of Nomad to determine if the machines are under or over-sized.
+having 8+ cores, 32 GB+ of memory, 80 GB+ of disk and significant network
+bandwidth. The core count and network recommendations are to ensure high
+throughput as Nomad heavily relies on network communication and as the Servers
+are managing all the nodes in the region and performing scheduling. The memory
+and disk requirements are due to the fact that Nomad stores all state in memory
+and will store two snapshots of this data onto disk. Thus disk should be at
+least 2 times the memory available to the server when deploying a high load
+cluster.
 
 **Nomad clients** support reserving resources on the node that should not be
 used by Nomad. This should be used to target a specific resource utilization per
@@ -67,23 +64,8 @@ port.
 * HTTP API (Default 4646). This is used by clients and servers to serve the HTTP
   API. TCP only.
 
-* RPC (Default 4647). This is used by servers and clients to communicate among
+* RPC (Default 4647). This is used by servers and clients to communicate amongst
   each other. TCP only.
 
-* Serf WAN (Default 4648). This is used by servers to gossip both over the LAN and
-  WAN to other servers. It isn't required that Nomad clients can reach this address.
-  TCP and UDP.
-
-When tasks ask for dynamic ports, they are allocated out of the port range
-between 20,000 and 32,000. This is well under the ephemeral port range suggested
-by the [IANA](https://en.wikipedia.org/wiki/Ephemeral_port). If your operating
-system's default ephemeral port range overlaps with Nomad's dynamic port range,
-you should tune the OS to avoid this overlap.
-
-On Linux this can be checked and set as follows:
-
-```
-$ cat /proc/sys/net/ipv4/ip_local_port_range 
-32768   60999
-$ echo "49152 65535" > /proc/sys/net/ipv4/ip_local_port_range 
-```
+* Serf WAN (Default 4648). This is used by servers to gossip over the WAN to
+  other servers. TCP and UDP.

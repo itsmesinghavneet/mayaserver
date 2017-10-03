@@ -1,44 +1,61 @@
 package client
 
 import (
+	"archive/tar"
+	"bytes"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
-	"math/rand"
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	memdb "github.com/hashicorp/go-memdb"
 	"github.com/hashicorp/nomad/client/config"
-	"github.com/hashicorp/nomad/client/fingerprint"
 	"github.com/hashicorp/nomad/command/agent/consul"
-	"github.com/hashicorp/nomad/helper"
 	"github.com/hashicorp/nomad/nomad"
 	"github.com/hashicorp/nomad/nomad/mock"
 	"github.com/hashicorp/nomad/nomad/structs"
-	nconfig "github.com/hashicorp/nomad/nomad/structs/config"
 	"github.com/hashicorp/nomad/testutil"
 	"github.com/mitchellh/hashstructure"
 
 	ctestutil "github.com/hashicorp/nomad/client/testutil"
 )
 
+var (
+	nextPort uint32 = 16000
+
+	osExecDriverSupport = map[string]bool{
+		"linux": true,
+	}
+)
+
 func getPort() int {
-	return 1030 + int(rand.Int31n(6440))
+	return int(atomic.AddUint32(&nextPort, 1))
 }
 
 func testServer(t *testing.T, cb func(*nomad.Config)) (*nomad.Server, string) {
+	f := false
+
 	// Setup the default settings
 	config := nomad.DefaultConfig()
-	config.VaultConfig.Enabled = helper.BoolToPtr(false)
+	config.VaultConfig.Enabled = &f
 	config.Build = "unittest"
 	config.DevMode = true
+	config.RPCAddr = &net.TCPAddr{
+		IP:   []byte{127, 0, 0, 1},
+		Port: getPort(),
+	}
+	config.NodeName = fmt.Sprintf("Node %d", config.RPCAddr.Port)
 
 	// Tighten the Serf timing
 	config.SerfConfig.MemberlistConfig.BindAddr = "127.0.0.1"
+	config.SerfConfig.MemberlistConfig.BindPort = getPort()
 	config.SerfConfig.MemberlistConfig.SuspicionMult = 2
 	config.SerfConfig.MemberlistConfig.RetransmitMult = 2
 	config.SerfConfig.MemberlistConfig.ProbeTimeout = 50 * time.Millisecond
@@ -52,61 +69,49 @@ func testServer(t *testing.T, cb func(*nomad.Config)) (*nomad.Server, string) {
 	config.RaftConfig.StartAsLeader = true
 	config.RaftTimeout = 500 * time.Millisecond
 
-	logger := log.New(config.LogOutput, "", log.LstdFlags)
-	catalog := consul.NewMockCatalog(logger)
-
 	// Invoke the callback if any
 	if cb != nil {
 		cb(config)
 	}
 
-	for i := 10; i >= 0; i-- {
-		config.RPCAddr = &net.TCPAddr{
-			IP:   []byte{127, 0, 0, 1},
-			Port: getPort(),
-		}
-		config.NodeName = fmt.Sprintf("Node %d", config.RPCAddr.Port)
-		config.SerfConfig.MemberlistConfig.BindPort = getPort()
-
-		// Create server
-		server, err := nomad.NewServer(config, catalog, logger)
-		if err == nil {
-			return server, config.RPCAddr.String()
-		} else if i == 0 {
-			t.Fatalf("err: %v", err)
-		} else {
-			wait := time.Duration(rand.Int31n(2000)) * time.Millisecond
-			time.Sleep(wait)
-		}
+	shutdownCh := make(chan struct{})
+	logger := log.New(config.LogOutput, "", log.LstdFlags)
+	consulSyncer, err := consul.NewSyncer(config.ConsulConfig, shutdownCh, logger)
+	if err != nil {
+		t.Fatalf("err: %v", err)
 	}
-	return nil, ""
+
+	// Create server
+	server, err := nomad.NewServer(config, consulSyncer, logger)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	return server, config.RPCAddr.String()
 }
 
 func testClient(t *testing.T, cb func(c *config.Config)) *Client {
+	f := false
+
 	conf := config.DefaultConfig()
-	conf.VaultConfig.Enabled = helper.BoolToPtr(false)
+	conf.VaultConfig.Enabled = &f
 	conf.DevMode = true
 	conf.Node = &structs.Node{
 		Reserved: &structs.Resources{
 			DiskMB: 0,
 		},
 	}
-
-	// Tighten the fingerprinter timeouts
-	if conf.Options == nil {
-		conf.Options = make(map[string]string)
-	}
-	conf.Options[fingerprint.TightenNetworkTimeoutsConfig] = "true"
-
 	if cb != nil {
 		cb(conf)
 	}
 
+	shutdownCh := make(chan struct{})
+	consulSyncer, err := consul.NewSyncer(conf.ConsulConfig, shutdownCh, log.New(os.Stderr, "", log.LstdFlags))
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
 	logger := log.New(conf.LogOutput, "", log.LstdFlags)
-	catalog := consul.NewMockCatalog(logger)
-	mockService := newMockConsulServiceClient()
-	mockService.logger = logger
-	client, err := NewClient(conf, catalog, mockService, logger)
+	client, err := NewClient(conf, consulSyncer, logger)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -114,7 +119,6 @@ func testClient(t *testing.T, cb func(c *config.Config)) *Client {
 }
 
 func TestClient_StartStop(t *testing.T) {
-	t.Parallel()
 	client := testClient(t, nil)
 	if err := client.Shutdown(); err != nil {
 		t.Fatalf("err: %v", err)
@@ -122,7 +126,6 @@ func TestClient_StartStop(t *testing.T) {
 }
 
 func TestClient_RPC(t *testing.T) {
-	t.Parallel()
 	s1, addr := testServer(t, nil)
 	defer s1.Shutdown()
 
@@ -142,7 +145,6 @@ func TestClient_RPC(t *testing.T) {
 }
 
 func TestClient_RPC_Passthrough(t *testing.T) {
-	t.Parallel()
 	s1, _ := testServer(t, nil)
 	defer s1.Shutdown()
 
@@ -162,7 +164,6 @@ func TestClient_RPC_Passthrough(t *testing.T) {
 }
 
 func TestClient_Fingerprint(t *testing.T) {
-	t.Parallel()
 	c := testClient(t, nil)
 	defer c.Shutdown()
 
@@ -177,7 +178,6 @@ func TestClient_Fingerprint(t *testing.T) {
 }
 
 func TestClient_HasNodeChanged(t *testing.T) {
-	t.Parallel()
 	c := testClient(t, nil)
 	defer c.Shutdown()
 
@@ -209,7 +209,6 @@ func TestClient_HasNodeChanged(t *testing.T) {
 }
 
 func TestClient_Fingerprint_InWhitelist(t *testing.T) {
-	t.Parallel()
 	c := testClient(t, func(c *config.Config) {
 		if c.Options == nil {
 			c.Options = make(map[string]string)
@@ -227,7 +226,6 @@ func TestClient_Fingerprint_InWhitelist(t *testing.T) {
 }
 
 func TestClient_Fingerprint_InBlacklist(t *testing.T) {
-	t.Parallel()
 	c := testClient(t, func(c *config.Config) {
 		if c.Options == nil {
 			c.Options = make(map[string]string)
@@ -245,7 +243,6 @@ func TestClient_Fingerprint_InBlacklist(t *testing.T) {
 }
 
 func TestClient_Fingerprint_OutOfWhitelist(t *testing.T) {
-	t.Parallel()
 	c := testClient(t, func(c *config.Config) {
 		if c.Options == nil {
 			c.Options = make(map[string]string)
@@ -262,7 +259,6 @@ func TestClient_Fingerprint_OutOfWhitelist(t *testing.T) {
 }
 
 func TestClient_Fingerprint_WhitelistBlacklistCombination(t *testing.T) {
-	t.Parallel()
 	c := testClient(t, func(c *config.Config) {
 		if c.Options == nil {
 			c.Options = make(map[string]string)
@@ -291,46 +287,63 @@ func TestClient_Fingerprint_WhitelistBlacklistCombination(t *testing.T) {
 	}
 }
 
+func TestClient_Drivers(t *testing.T) {
+	c := testClient(t, nil)
+	defer c.Shutdown()
+
+	node := c.Node()
+	if node.Attributes["driver.exec"] == "" {
+		if v, ok := osExecDriverSupport[runtime.GOOS]; v && ok {
+			t.Fatalf("missing exec driver")
+		} else {
+			t.Skipf("missing exec driver, no OS support")
+		}
+	}
+}
+
 func TestClient_Drivers_InWhitelist(t *testing.T) {
-	t.Parallel()
 	c := testClient(t, func(c *config.Config) {
 		if c.Options == nil {
 			c.Options = make(map[string]string)
 		}
 
 		// Weird spacing to test trimming
-		c.Options["driver.raw_exec.enable"] = "1"
-		c.Options["driver.whitelist"] = "   raw_exec ,  foo	"
+		c.Options["driver.whitelist"] = "   exec ,  foo	"
 	})
 	defer c.Shutdown()
 
 	node := c.Node()
-	if node.Attributes["driver.raw_exec"] == "" {
-		t.Fatalf("missing raw_exec driver")
+	if node.Attributes["driver.exec"] == "" {
+		if v, ok := osExecDriverSupport[runtime.GOOS]; v && ok {
+			t.Fatalf("missing exec driver")
+		} else {
+			t.Skipf("missing exec driver, no OS support")
+		}
 	}
 }
 
 func TestClient_Drivers_InBlacklist(t *testing.T) {
-	t.Parallel()
 	c := testClient(t, func(c *config.Config) {
 		if c.Options == nil {
 			c.Options = make(map[string]string)
 		}
 
 		// Weird spacing to test trimming
-		c.Options["driver.raw_exec.enable"] = "1"
-		c.Options["driver.blacklist"] = "   raw_exec ,  foo	"
+		c.Options["driver.blacklist"] = "   exec ,  foo	"
 	})
 	defer c.Shutdown()
 
 	node := c.Node()
-	if node.Attributes["driver.raw_exec"] != "" {
-		t.Fatalf("raw_exec driver loaded despite blacklist")
+	if node.Attributes["driver.exec"] != "" {
+		if v, ok := osExecDriverSupport[runtime.GOOS]; !v && ok {
+			t.Fatalf("exec driver loaded despite blacklist")
+		} else {
+			t.Skipf("missing exec driver, no OS support")
+		}
 	}
 }
 
 func TestClient_Drivers_OutOfWhitelist(t *testing.T) {
-	t.Parallel()
 	c := testClient(t, func(c *config.Config) {
 		if c.Options == nil {
 			c.Options = make(map[string]string)
@@ -347,7 +360,6 @@ func TestClient_Drivers_OutOfWhitelist(t *testing.T) {
 }
 
 func TestClient_Drivers_WhitelistBlacklistCombination(t *testing.T) {
-	t.Parallel()
 	c := testClient(t, func(c *config.Config) {
 		if c.Options == nil {
 			c.Options = make(map[string]string)
@@ -370,112 +382,7 @@ func TestClient_Drivers_WhitelistBlacklistCombination(t *testing.T) {
 	}
 }
 
-// TestClient_MixedTLS asserts that when a server is running with TLS enabled
-// it will reject any RPC connections from clients that lack TLS. See #2525
-func TestClient_MixedTLS(t *testing.T) {
-	t.Parallel()
-	const (
-		cafile  = "../helper/tlsutil/testdata/ca.pem"
-		foocert = "../helper/tlsutil/testdata/nomad-foo.pem"
-		fookey  = "../helper/tlsutil/testdata/nomad-foo-key.pem"
-	)
-	s1, addr := testServer(t, func(c *nomad.Config) {
-		c.TLSConfig = &nconfig.TLSConfig{
-			EnableHTTP:           true,
-			EnableRPC:            true,
-			VerifyServerHostname: true,
-			CAFile:               cafile,
-			CertFile:             foocert,
-			KeyFile:              fookey,
-		}
-	})
-	defer s1.Shutdown()
-	testutil.WaitForLeader(t, s1.RPC)
-
-	c1 := testClient(t, func(c *config.Config) {
-		c.Servers = []string{addr}
-	})
-	defer c1.Shutdown()
-
-	req := structs.NodeSpecificRequest{
-		NodeID:       c1.Node().ID,
-		QueryOptions: structs.QueryOptions{Region: "global"},
-	}
-	var out structs.SingleNodeResponse
-	testutil.AssertUntil(100*time.Millisecond,
-		func() (bool, error) {
-			err := c1.RPC("Node.GetNode", &req, &out)
-			if err == nil {
-				return false, fmt.Errorf("client RPC succeeded when it should have failed:\n%+v", out)
-			}
-			return true, nil
-		},
-		func(err error) {
-			t.Fatalf(err.Error())
-		},
-	)
-}
-
-// TestClient_BadTLS asserts that when a client and server are running with TLS
-// enabled -- but their certificates are signed by different CAs -- they're
-// unable to communicate.
-func TestClient_BadTLS(t *testing.T) {
-	t.Parallel()
-	const (
-		cafile  = "../helper/tlsutil/testdata/ca.pem"
-		foocert = "../helper/tlsutil/testdata/nomad-foo.pem"
-		fookey  = "../helper/tlsutil/testdata/nomad-foo-key.pem"
-		badca   = "../helper/tlsutil/testdata/ca-bad.pem"
-		badcert = "../helper/tlsutil/testdata/nomad-bad.pem"
-		badkey  = "../helper/tlsutil/testdata/nomad-bad-key.pem"
-	)
-	s1, addr := testServer(t, func(c *nomad.Config) {
-		c.TLSConfig = &nconfig.TLSConfig{
-			EnableHTTP:           true,
-			EnableRPC:            true,
-			VerifyServerHostname: true,
-			CAFile:               cafile,
-			CertFile:             foocert,
-			KeyFile:              fookey,
-		}
-	})
-	defer s1.Shutdown()
-	testutil.WaitForLeader(t, s1.RPC)
-
-	c1 := testClient(t, func(c *config.Config) {
-		c.Servers = []string{addr}
-		c.TLSConfig = &nconfig.TLSConfig{
-			EnableHTTP:           true,
-			EnableRPC:            true,
-			VerifyServerHostname: true,
-			CAFile:               badca,
-			CertFile:             badcert,
-			KeyFile:              badkey,
-		}
-	})
-	defer c1.Shutdown()
-
-	req := structs.NodeSpecificRequest{
-		NodeID:       c1.Node().ID,
-		QueryOptions: structs.QueryOptions{Region: "global"},
-	}
-	var out structs.SingleNodeResponse
-	testutil.AssertUntil(100*time.Millisecond,
-		func() (bool, error) {
-			err := c1.RPC("Node.GetNode", &req, &out)
-			if err == nil {
-				return false, fmt.Errorf("client RPC succeeded when it should have failed:\n%+v", out)
-			}
-			return true, nil
-		},
-		func(err error) {
-			t.Fatalf(err.Error())
-		},
-	)
-}
-
 func TestClient_Register(t *testing.T) {
-	t.Parallel()
 	s1, _ := testServer(t, nil)
 	defer s1.Shutdown()
 	testutil.WaitForLeader(t, s1.RPC)
@@ -507,7 +414,6 @@ func TestClient_Register(t *testing.T) {
 }
 
 func TestClient_Heartbeat(t *testing.T) {
-	t.Parallel()
 	s1, _ := testServer(t, func(c *nomad.Config) {
 		c.MinHeartbeatTTL = 50 * time.Millisecond
 	})
@@ -541,7 +447,6 @@ func TestClient_Heartbeat(t *testing.T) {
 }
 
 func TestClient_UpdateAllocStatus(t *testing.T) {
-	t.Parallel()
 	s1, _ := testServer(t, nil)
 	defer s1.Shutdown()
 	testutil.WaitForLeader(t, s1.RPC)
@@ -591,7 +496,6 @@ func TestClient_UpdateAllocStatus(t *testing.T) {
 }
 
 func TestClient_WatchAllocs(t *testing.T) {
-	t.Parallel()
 	ctestutil.ExecCompatible(t)
 	s1, _ := testServer(t, nil)
 	defer s1.Shutdown()
@@ -690,7 +594,6 @@ func waitTilNodeReady(client *Client, t *testing.T) {
 }
 
 func TestClient_SaveRestoreState(t *testing.T) {
-	t.Parallel()
 	ctestutil.ExecCompatible(t)
 	s1, _ := testServer(t, nil)
 	defer s1.Shutdown()
@@ -748,11 +651,14 @@ func TestClient_SaveRestoreState(t *testing.T) {
 	}
 
 	// Create a new client
+	shutdownCh := make(chan struct{})
 	logger := log.New(c1.config.LogOutput, "", log.LstdFlags)
-	catalog := consul.NewMockCatalog(logger)
-	mockService := newMockConsulServiceClient()
-	mockService.logger = logger
-	c2, err := NewClient(c1.config, catalog, mockService, logger)
+	consulSyncer, err := consul.NewSyncer(c1.config.ConsulConfig, shutdownCh, logger)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	c2, err := NewClient(c1.config, consulSyncer, logger)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -784,7 +690,6 @@ func TestClient_SaveRestoreState(t *testing.T) {
 }
 
 func TestClient_Init(t *testing.T) {
-	t.Parallel()
 	dir, err := ioutil.TempDir("", "nomad")
 	if err != nil {
 		t.Fatalf("err: %s", err)
@@ -808,7 +713,6 @@ func TestClient_Init(t *testing.T) {
 }
 
 func TestClient_BlockedAllocations(t *testing.T) {
-	t.Parallel()
 	s1, _ := testServer(t, nil)
 	defer s1.Shutdown()
 	testutil.WaitForLeader(t, s1.RPC)
@@ -876,14 +780,11 @@ func TestClient_BlockedAllocations(t *testing.T) {
 
 	// Enusre that the chained allocation is being tracked as blocked
 	testutil.WaitForResult(func() (bool, error) {
-		ar := c1.getAllocRunners()[alloc2.ID]
-		if ar == nil {
-			return false, fmt.Errorf("alloc 2's alloc runner does not exist")
+		alloc, ok := c1.blockedAllocations[alloc2.PreviousAllocation]
+		if ok && alloc.ID == alloc2.ID {
+			return true, nil
 		}
-		if !ar.IsWaiting() {
-			return false, fmt.Errorf("alloc 2 is not blocked")
-		}
-		return true, nil
+		return false, fmt.Errorf("no blocked allocations")
 	}, func(err error) {
 		t.Fatalf("err: %v", err)
 	})
@@ -897,13 +798,9 @@ func TestClient_BlockedAllocations(t *testing.T) {
 
 	// Ensure that there are no blocked allocations
 	testutil.WaitForResult(func() (bool, error) {
-		for id, ar := range c1.getAllocRunners() {
-			if ar.IsWaiting() {
-				return false, fmt.Errorf("%q still blocked", id)
-			}
-			if ar.IsMigrating() {
-				return false, fmt.Errorf("%q still migrating", id)
-			}
+		_, ok := c1.blockedAllocations[alloc2.PreviousAllocation]
+		if ok {
+			return false, fmt.Errorf("blocked evals present")
 		}
 		return true, nil
 	}, func(err error) {
@@ -917,5 +814,113 @@ func TestClient_BlockedAllocations(t *testing.T) {
 
 	for _, ar := range c1.getAllocRunners() {
 		<-ar.WaitCh()
+	}
+}
+
+func TestClient_UnarchiveAllocDir(t *testing.T) {
+	dir, err := ioutil.TempDir("", "")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	defer os.RemoveAll(dir)
+
+	if err := os.Mkdir(filepath.Join(dir, "foo"), 0777); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	dirInfo, err := os.Stat(filepath.Join(dir, "foo"))
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	f, err := os.Create(filepath.Join(dir, "foo", "bar"))
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if _, err := f.WriteString("foo"); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if err := f.Chmod(0644); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	fInfo, err := f.Stat()
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	f.Close()
+
+	buf := new(bytes.Buffer)
+	tw := tar.NewWriter(buf)
+
+	walkFn := func(path string, fileInfo os.FileInfo, err error) error {
+		// Ignore if the file is a symlink
+		if fileInfo.Mode() == os.ModeSymlink {
+			return nil
+		}
+
+		// Include the path of the file name relative to the alloc dir
+		// so that we can put the files in the right directories
+		hdr, err := tar.FileInfoHeader(fileInfo, "")
+		if err != nil {
+			return fmt.Errorf("error creating file header: %v", err)
+		}
+		hdr.Name = fileInfo.Name()
+		tw.WriteHeader(hdr)
+
+		// If it's a directory we just write the header into the tar
+		if fileInfo.IsDir() {
+			return nil
+		}
+
+		// Write the file into the archive
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+
+		if _, err := io.Copy(tw, file); err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	if err := filepath.Walk(dir, walkFn); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	tw.Close()
+
+	dir1, err := ioutil.TempDir("", "")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	defer os.RemoveAll(dir1)
+
+	c1 := testClient(t, func(c *config.Config) {
+		c.RPCHandler = nil
+	})
+	defer c1.Shutdown()
+
+	rc := ioutil.NopCloser(buf)
+
+	c1.migratingAllocs["123"] = newMigrateAllocCtrl(mock.Alloc())
+	if err := c1.unarchiveAllocDir(rc, "123", dir1); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	// Ensure foo is present
+	fi, err := os.Stat(filepath.Join(dir1, "foo"))
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if fi.Mode() != dirInfo.Mode() {
+		t.Fatalf("mode: %v", fi.Mode())
+	}
+
+	fi1, err := os.Stat(filepath.Join(dir1, "bar"))
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if fi1.Mode() != fInfo.Mode() {
+		t.Fatalf("mode: %v", fi1.Mode())
 	}
 }

@@ -74,16 +74,13 @@ func testConfig() *config.Config {
 	conf.StateDir = os.TempDir()
 	conf.AllocDir = os.TempDir()
 	conf.MaxKillTimeout = 10 * time.Second
-	conf.Region = "global"
-	conf.Node = mock.Node()
 	return conf
 }
 
 type testContext struct {
-	AllocDir   *allocdir.AllocDir
-	DriverCtx  *DriverContext
-	ExecCtx    *ExecContext
-	EnvBuilder *env.Builder
+	AllocDir  *allocdir.AllocDir
+	DriverCtx *DriverContext
+	ExecCtx   *ExecContext
 }
 
 // testDriverContext sets up an alloc dir, task dir, DriverContext, and ExecContext.
@@ -91,7 +88,6 @@ type testContext struct {
 // It is up to the caller to call AllocDir.Destroy to cleanup.
 func testDriverContexts(t *testing.T, task *structs.Task) *testContext {
 	cfg := testConfig()
-	cfg.Node = mock.Node()
 	allocDir := allocdir.NewAllocDir(testLogger(), filepath.Join(cfg.AllocDir, structs.GenerateUUID()))
 	if err := allocDir.Build(); err != nil {
 		t.Fatalf("AllocDir.Build() failed: %v", err)
@@ -113,17 +109,23 @@ func testDriverContexts(t *testing.T, task *structs.Task) *testContext {
 		t.Fatalf("TaskDir.Build(%#v, %q) failed: %v", config.DefaultChrootEnv, tmpdrv.FSIsolation(), err)
 		return nil
 	}
-	eb := env.NewBuilder(cfg.Node, alloc, task, cfg.Region)
-	SetEnvvars(eb, tmpdrv.FSIsolation(), td, cfg)
-	execCtx := NewExecContext(td, eb.Build())
+
+	execCtx := NewExecContext(td)
+
+	taskEnv, err := GetTaskEnv(td, cfg.Node, task, alloc, cfg, "")
+	if err != nil {
+		allocDir.Destroy()
+		t.Fatalf("GetTaskEnv() failed: %v", err)
+		return nil
+	}
 
 	logger := testLogger()
 	emitter := func(m string, args ...interface{}) {
 		logger.Printf("[EVENT] "+m, args...)
 	}
-	driverCtx := NewDriverContext(task.Name, alloc.ID, cfg, cfg.Node, logger, emitter)
+	driverCtx := NewDriverContext(task.Name, alloc.ID, cfg, cfg.Node, logger, taskEnv, emitter)
 
-	return &testContext{allocDir, driverCtx, execCtx, eb}
+	return &testContext{allocDir, driverCtx, execCtx}
 }
 
 // setupTaskEnv creates a test env for GetTaskEnv testing. Returns task dir,
@@ -160,12 +162,10 @@ func setupTaskEnv(t *testing.T, driver string) (*allocdir.TaskDir, map[string]st
 	conf := testConfig()
 	allocDir := allocdir.NewAllocDir(testLogger(), filepath.Join(conf.AllocDir, alloc.ID))
 	taskDir := allocDir.NewTaskDir(task.Name)
-	eb := env.NewBuilder(conf.Node, alloc, task, conf.Region)
-	tmpDriver, err := NewDriver(driver, NewEmptyDriverContext())
+	env, err := GetTaskEnv(taskDir, nil, task, alloc, conf, "")
 	if err != nil {
-		t.Fatalf("unable to create driver %q: %v", driver, err)
+		t.Fatalf("GetTaskEnv() failed: %v", err)
 	}
-	SetEnvvars(eb, tmpDriver.FSIsolation(), taskDir, conf)
 	exp := map[string]string{
 		"NOMAD_CPU_LIMIT":               "1000",
 		"NOMAD_MEMORY_LIMIT":            "500",
@@ -206,21 +206,16 @@ func setupTaskEnv(t *testing.T, driver string) (*allocdir.TaskDir, map[string]st
 		"HELLO":                         "world",
 		"lorem":                         "ipsum",
 		"NOMAD_ALLOC_ID":                alloc.ID,
-		"NOMAD_ALLOC_INDEX":             "0",
 		"NOMAD_ALLOC_NAME":              alloc.Name,
 		"NOMAD_TASK_NAME":               task.Name,
-		"NOMAD_GROUP_NAME":              alloc.TaskGroup,
 		"NOMAD_JOB_NAME":                alloc.Job.Name,
-		"NOMAD_DC":                      "dc1",
-		"NOMAD_REGION":                  "global",
 	}
 
-	act := eb.Build().Map()
+	act := env.EnvMap()
 	return taskDir, exp, act
 }
 
 func TestDriver_GetTaskEnv_None(t *testing.T) {
-	t.Parallel()
 	taskDir, exp, act := setupTaskEnv(t, "raw_exec")
 
 	// raw_exec should use host alloc dir path
@@ -249,7 +244,6 @@ func TestDriver_GetTaskEnv_None(t *testing.T) {
 }
 
 func TestDriver_GetTaskEnv_Chroot(t *testing.T) {
-	t.Parallel()
 	_, exp, act := setupTaskEnv(t, "exec")
 
 	exp[env.AllocDir] = allocdir.SharedAllocContainerPath
@@ -276,10 +270,9 @@ func TestDriver_GetTaskEnv_Chroot(t *testing.T) {
 	}
 }
 
-// TestDriver_TaskEnv_Image ensures host environment variables are not set
+// TestDriver_GetTaskEnv_Image ensures host environment variables are not set
 // for image based drivers. See #2211
-func TestDriver_TaskEnv_Image(t *testing.T) {
-	t.Parallel()
+func TestDriver_GetTaskEnv_Image(t *testing.T) {
 	_, exp, act := setupTaskEnv(t, "docker")
 
 	exp[env.AllocDir] = allocdir.SharedAllocContainerPath
@@ -305,7 +298,6 @@ func TestDriver_TaskEnv_Image(t *testing.T) {
 }
 
 func TestMapMergeStrInt(t *testing.T) {
-	t.Parallel()
 	a := map[string]int{
 		"cakes":   5,
 		"cookies": 3,
@@ -330,7 +322,6 @@ func TestMapMergeStrInt(t *testing.T) {
 }
 
 func TestMapMergeStrStr(t *testing.T) {
-	t.Parallel()
 	a := map[string]string{
 		"cake":   "chocolate",
 		"cookie": "caramel",
@@ -355,7 +346,6 @@ func TestMapMergeStrStr(t *testing.T) {
 }
 
 func TestCreatedResources_AddMerge(t *testing.T) {
-	t.Parallel()
 	res1 := NewCreatedResources()
 	res1.Add("k1", "v1")
 	res1.Add("k1", "v2")
@@ -395,7 +385,6 @@ func TestCreatedResources_AddMerge(t *testing.T) {
 }
 
 func TestCreatedResources_CopyRemove(t *testing.T) {
-	t.Parallel()
 	res1 := NewCreatedResources()
 	res1.Add("k1", "v1")
 	res1.Add("k1", "v2")

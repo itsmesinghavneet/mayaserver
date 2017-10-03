@@ -5,25 +5,21 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/nomad/command/agent"
 	"github.com/hashicorp/nomad/testutil"
 	"github.com/mitchellh/cli"
-	"github.com/posener/complete"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestNodeStatusCommand_Implements(t *testing.T) {
-	t.Parallel()
 	var _ cli.Command = &NodeStatusCommand{}
 }
 
 func TestNodeStatusCommand_Self(t *testing.T) {
-	t.Parallel()
 	// Start in dev mode so we get a node registration
-	srv, client, url := testServer(t, true, func(c *agent.Config) {
+	srv, client, url := testServer(t, func(c *testutil.TestServerConfig) {
+		c.DevMode = true
 		c.NodeName = "mynode"
 	})
-	defer srv.Shutdown()
+	defer srv.Stop()
 
 	ui := new(cli.MockUi)
 	cmd := &NodeStatusCommand{Meta: Meta{Ui: ui}}
@@ -52,7 +48,7 @@ func TestNodeStatusCommand_Self(t *testing.T) {
 	if !strings.Contains(out, "mynode") {
 		t.Fatalf("expect to find mynode, got: %s", out)
 	}
-	if !strings.Contains(out, "No allocations placed") {
+	if strings.Contains(out, "Allocations") {
 		t.Fatalf("should not dump allocations")
 	}
 	ui.OutputWriter.Reset()
@@ -69,12 +65,12 @@ func TestNodeStatusCommand_Self(t *testing.T) {
 }
 
 func TestNodeStatusCommand_Run(t *testing.T) {
-	t.Parallel()
 	// Start in dev mode so we get a node registration
-	srv, client, url := testServer(t, true, func(c *agent.Config) {
+	srv, client, url := testServer(t, func(c *testutil.TestServerConfig) {
+		c.DevMode = true
 		c.NodeName = "mynode"
 	})
-	defer srv.Shutdown()
+	defer srv.Stop()
 
 	ui := new(cli.MockUi)
 	cmd := &NodeStatusCommand{Meta: Meta{Ui: ui}}
@@ -123,12 +119,12 @@ func TestNodeStatusCommand_Run(t *testing.T) {
 	if !strings.Contains(out, "mynode") {
 		t.Fatalf("expect to find mynode, got: %s", out)
 	}
-	if !strings.Contains(out, "No allocations placed") {
+	if strings.Contains(out, "Allocations") {
 		t.Fatalf("should not dump allocations")
 	}
 
-	// Query a single node based on a prefix that is even without the hyphen
-	if code := cmd.Run([]string{"-address=" + url, nodeID[:13]}); code != 0 {
+	// Query a single node based on prefix
+	if code := cmd.Run([]string{"-address=" + url, nodeID[:4]}); code != 0 {
 		t.Fatalf("expected exit 0, got: %d", code)
 	}
 	out = ui.OutputWriter.String()
@@ -164,9 +160,8 @@ func TestNodeStatusCommand_Run(t *testing.T) {
 }
 
 func TestNodeStatusCommand_Fails(t *testing.T) {
-	t.Parallel()
-	srv, _, url := testServer(t, false, nil)
-	defer srv.Shutdown()
+	srv, _, url := testServer(t, nil)
+	defer srv.Stop()
 
 	ui := new(cli.MockUi)
 	cmd := &NodeStatusCommand{Meta: Meta{Ui: ui}}
@@ -211,42 +206,7 @@ func TestNodeStatusCommand_Fails(t *testing.T) {
 	if code := cmd.Run([]string{"-address=" + url, "-json", "-t", "{{.ID}}"}); code != 1 {
 		t.Fatalf("expected exit 1, got: %d", code)
 	}
-	if out := ui.ErrorWriter.String(); !strings.Contains(out, "Both json and template formatting are not allowed") {
+	if out := ui.ErrorWriter.String(); !strings.Contains(out, "Both -json and -t are not allowed") {
 		t.Fatalf("expected getting formatter error, got: %s", out)
 	}
-}
-
-func TestNodeStatusCommand_AutocompleteArgs(t *testing.T) {
-	assert := assert.New(t)
-	t.Parallel()
-
-	srv, client, url := testServer(t, true, nil)
-	defer srv.Shutdown()
-
-	// Wait for a node to appear
-	var nodeID string
-	testutil.WaitForResult(func() (bool, error) {
-		nodes, _, err := client.Nodes().List(nil)
-		if err != nil {
-			return false, err
-		}
-		if len(nodes) == 0 {
-			return false, fmt.Errorf("missing node")
-		}
-		nodeID = nodes[0].ID
-		return true, nil
-	}, func(err error) {
-		t.Fatalf("err: %s", err)
-	})
-
-	ui := new(cli.MockUi)
-	cmd := &NodeStatusCommand{Meta: Meta{Ui: ui, flagAddress: url}}
-
-	prefix := nodeID[:len(nodeID)-5]
-	args := complete.Args{Last: prefix}
-	predictor := cmd.AutocompleteArgs()
-
-	res := predictor.Predict(args)
-	assert.Equal(1, len(res))
-	assert.Equal(nodeID, res[0])
 }

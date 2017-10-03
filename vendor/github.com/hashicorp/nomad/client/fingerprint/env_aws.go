@@ -16,15 +16,9 @@ import (
 	"github.com/hashicorp/nomad/nomad/structs"
 )
 
-const (
-	// This is where the AWS metadata server normally resides. We hardcode the
-	// "instance" path as well since it's the only one we access here.
-	DEFAULT_AWS_URL = "http://169.254.169.254/latest/meta-data/"
-
-	// AwsMetadataTimeout is the timeout used when contacting the AWS metadata
-	// service
-	AwsMetadataTimeout = 2 * time.Second
-)
+// This is where the AWS metadata server normally resides. We hardcode the
+// "instance" path as well since it's the only one we access here.
+const DEFAULT_AWS_URL = "http://169.254.169.254/latest/meta-data/"
 
 // map of instance type to approximate speed, in Mbits/s
 // Estimates from http://stackoverflow.com/a/35806587
@@ -50,25 +44,16 @@ var ec2InstanceSpeedMap = map[*regexp.Regexp]int{
 // EnvAWSFingerprint is used to fingerprint AWS metadata
 type EnvAWSFingerprint struct {
 	StaticFingerprinter
-	timeout time.Duration
-	logger  *log.Logger
+	logger *log.Logger
 }
 
 // NewEnvAWSFingerprint is used to create a fingerprint from AWS metadata
 func NewEnvAWSFingerprint(logger *log.Logger) Fingerprint {
-	f := &EnvAWSFingerprint{
-		logger:  logger,
-		timeout: AwsMetadataTimeout,
-	}
+	f := &EnvAWSFingerprint{logger: logger}
 	return f
 }
 
 func (f *EnvAWSFingerprint) Fingerprint(cfg *config.Config, node *structs.Node) (bool, error) {
-	// Check if we should tighten the timeout
-	if cfg.ReadBoolDefault(TightenNetworkTimeoutsConfig, false) {
-		f.timeout = 1 * time.Millisecond
-	}
-
 	if !f.isAWS() {
 		return false, nil
 	}
@@ -86,8 +71,9 @@ func (f *EnvAWSFingerprint) Fingerprint(cfg *config.Config, node *structs.Node) 
 		metadataURL = DEFAULT_AWS_URL
 	}
 
+	// assume 2 seconds is enough time for inside AWS network
 	client := &http.Client{
-		Timeout:   f.timeout,
+		Timeout:   2 * time.Second,
 		Transport: cleanhttp.DefaultTransport(),
 	}
 
@@ -95,7 +81,7 @@ func (f *EnvAWSFingerprint) Fingerprint(cfg *config.Config, node *structs.Node) 
 	// uniquely identifies a node, such as ip, should be marked as unique. When
 	// marked as unique, the key isn't included in the computed node class.
 	keys := map[string]bool{
-		"ami-id":                      false,
+		"ami-id":                      true,
 		"hostname":                    true,
 		"instance-id":                 true,
 		"instance-type":               false,
@@ -188,8 +174,9 @@ func (f *EnvAWSFingerprint) isAWS() bool {
 		metadataURL = DEFAULT_AWS_URL
 	}
 
+	// assume 2 seconds is enough time for inside AWS network
 	client := &http.Client{
-		Timeout:   f.timeout,
+		Timeout:   2 * time.Second,
 		Transport: cleanhttp.DefaultTransport(),
 	}
 
@@ -230,8 +217,9 @@ func (f *EnvAWSFingerprint) linkSpeed() int {
 		metadataURL = DEFAULT_AWS_URL
 	}
 
+	// assume 2 seconds is enough time for inside AWS network
 	client := &http.Client{
-		Timeout:   f.timeout,
+		Timeout:   2 * time.Second,
 		Transport: cleanhttp.DefaultTransport(),
 	}
 

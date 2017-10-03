@@ -5,7 +5,6 @@ import (
 
 	"github.com/hashicorp/nomad/command"
 	"github.com/hashicorp/nomad/command/agent"
-	"github.com/hashicorp/nomad/version"
 	"github.com/mitchellh/cli"
 )
 
@@ -33,9 +32,11 @@ func Commands(metaPtr *command.Meta) map[string]cli.CommandFactory {
 		},
 		"agent": func() (cli.Command, error) {
 			return &agent.Command{
-				Version:    version.GetVersion(),
-				Ui:         meta.Ui,
-				ShutdownCh: make(chan struct{}),
+				Revision:          GitCommit,
+				Version:           Version,
+				VersionPrerelease: VersionPrerelease,
+				Ui:                meta.Ui,
+				ShutdownCh:        make(chan struct{}),
 			}, nil
 		},
 		"agent-info": func() (cli.Command, error) {
@@ -50,41 +51,6 @@ func Commands(metaPtr *command.Meta) map[string]cli.CommandFactory {
 		},
 		"client-config": func() (cli.Command, error) {
 			return &command.ClientConfigCommand{
-				Meta: meta,
-			}, nil
-		},
-		"deployment": func() (cli.Command, error) {
-			return &command.DeploymentCommand{
-				Meta: meta,
-			}, nil
-		},
-		"deployment fail": func() (cli.Command, error) {
-			return &command.DeploymentFailCommand{
-				Meta: meta,
-			}, nil
-		},
-		"deployment list": func() (cli.Command, error) {
-			return &command.DeploymentListCommand{
-				Meta: meta,
-			}, nil
-		},
-		"deployment pause": func() (cli.Command, error) {
-			return &command.DeploymentPauseCommand{
-				Meta: meta,
-			}, nil
-		},
-		"deployment promote": func() (cli.Command, error) {
-			return &command.DeploymentPromoteCommand{
-				Meta: meta,
-			}, nil
-		},
-		"deployment resume": func() (cli.Command, error) {
-			return &command.DeploymentResumeCommand{
-				Meta: meta,
-			}, nil
-		},
-		"deployment status": func() (cli.Command, error) {
-			return &command.DeploymentStatusCommand{
 				Meta: meta,
 			}, nil
 		},
@@ -128,33 +94,8 @@ func Commands(metaPtr *command.Meta) map[string]cli.CommandFactory {
 				Meta: meta,
 			}, nil
 		},
-		"job deployments": func() (cli.Command, error) {
-			return &command.JobDeploymentsCommand{
-				Meta: meta,
-			}, nil
-		},
 		"job dispatch": func() (cli.Command, error) {
 			return &command.JobDispatchCommand{
-				Meta: meta,
-			}, nil
-		},
-		"job history": func() (cli.Command, error) {
-			return &command.JobHistoryCommand{
-				Meta: meta,
-			}, nil
-		},
-		"job promote": func() (cli.Command, error) {
-			return &command.JobPromoteCommand{
-				Meta: meta,
-			}, nil
-		},
-		"job revert": func() (cli.Command, error) {
-			return &command.JobRevertCommand{
-				Meta: meta,
-			}, nil
-		},
-		"job status": func() (cli.Command, error) {
-			return &command.JobStatusCommand{
 				Meta: meta,
 			}, nil
 		},
@@ -240,9 +181,24 @@ func Commands(metaPtr *command.Meta) map[string]cli.CommandFactory {
 			}, nil
 		},
 		"version": func() (cli.Command, error) {
+			ver := Version
+			rel := VersionPrerelease
+			if GitDescribe != "" {
+				ver = GitDescribe
+				// Trim off a leading 'v', we append it anyways.
+				if ver[0] == 'v' {
+					ver = ver[1:]
+				}
+			}
+			if GitDescribe == "" && rel == "" && VersionPrerelease != "" {
+				rel = "dev"
+			}
+
 			return &command.VersionCommand{
-				Version: version.GetVersion(),
-				Ui:      meta.Ui,
+				Revision:          GitCommit,
+				Version:           ver,
+				VersionPrerelease: rel,
+				Ui:                meta.Ui,
 			}, nil
 		},
 	}

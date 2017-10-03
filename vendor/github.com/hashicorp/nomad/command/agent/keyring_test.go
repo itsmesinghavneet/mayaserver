@@ -9,11 +9,11 @@ import (
 )
 
 func TestAgent_LoadKeyrings(t *testing.T) {
-	t.Parallel()
 	key := "tbLJg26ZJyJ9pK3qhc9jig=="
 
 	// Should be no configured keyring file by default
-	agent1 := NewTestAgent(t.Name(), nil)
+	dir1, agent1 := makeAgent(t, nil)
+	defer os.RemoveAll(dir1)
 	defer agent1.Shutdown()
 
 	c := agent1.server.GetConfig()
@@ -24,12 +24,14 @@ func TestAgent_LoadKeyrings(t *testing.T) {
 		t.Fatalf("keyring should not be loaded")
 	}
 
-	// Server should auto-load WAN keyring files
-	agent2 := &TestAgent{
-		Name: t.Name() + "2",
-		Key:  key,
-	}
-	agent2.Start()
+	// Server should auto-load LAN and WAN keyring files
+	dir2, agent2 := makeAgent(t, func(c *Config) {
+		file := filepath.Join(c.DataDir, serfKeyring)
+		if err := initKeyring(file, key); err != nil {
+			t.Fatalf("err: %s", err)
+		}
+	})
+	defer os.RemoveAll(dir2)
 	defer agent2.Shutdown()
 
 	c = agent2.server.GetConfig()
@@ -42,7 +44,6 @@ func TestAgent_LoadKeyrings(t *testing.T) {
 }
 
 func TestAgent_InitKeyring(t *testing.T) {
-	t.Parallel()
 	key1 := "tbLJg26ZJyJ9pK3qhc9jig=="
 	key2 := "4leC33rgtXKIVUr9Nr0snQ=="
 	expected := fmt.Sprintf(`["%s"]`, key1)

@@ -44,7 +44,6 @@ func (m *mockImageClient) RemoveImage(id string) error {
 }
 
 func TestDockerCoordinator_ConcurrentPulls(t *testing.T) {
-	t.Parallel()
 	image := "foo"
 	imageID := structs.GenerateUUID()
 	mapping := map[string]string{imageID: image}
@@ -70,7 +69,7 @@ func TestDockerCoordinator_ConcurrentPulls(t *testing.T) {
 
 	testutil.WaitForResult(func() (bool, error) {
 		p := mock.pulled[image]
-		if p >= 10 {
+		if p != 1 {
 			return false, fmt.Errorf("Wrong number of pulls: %d", p)
 		}
 
@@ -91,7 +90,6 @@ func TestDockerCoordinator_ConcurrentPulls(t *testing.T) {
 }
 
 func TestDockerCoordinator_Pull_Remove(t *testing.T) {
-	t.Parallel()
 	image := "foo"
 	imageID := structs.GenerateUUID()
 	mapping := map[string]string{imageID: image}
@@ -155,7 +153,6 @@ func TestDockerCoordinator_Pull_Remove(t *testing.T) {
 }
 
 func TestDockerCoordinator_Remove_Cancel(t *testing.T) {
-	t.Parallel()
 	image := "foo"
 	imageID := structs.GenerateUUID()
 	mapping := map[string]string{imageID: image}
@@ -203,7 +200,6 @@ func TestDockerCoordinator_Remove_Cancel(t *testing.T) {
 }
 
 func TestDockerCoordinator_No_Cleanup(t *testing.T) {
-	t.Parallel()
 	image := "foo"
 	imageID := structs.GenerateUUID()
 	mapping := map[string]string{imageID: image}

@@ -7,8 +7,7 @@ import (
 )
 
 func TestClientStatsRequest(t *testing.T) {
-	t.Parallel()
-	httpTest(t, nil, func(s *TestAgent) {
+	httpTest(t, nil, func(s *TestServer) {
 		req, err := http.NewRequest("GET", "/v1/client/stats/?since=foo", nil)
 		if err != nil {
 			t.Fatalf("err: %v", err)

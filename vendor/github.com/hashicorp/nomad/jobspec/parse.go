@@ -272,7 +272,6 @@ func parseGroups(result *api.Job, list *ast.ObjectList) error {
 			"meta",
 			"task",
 			"ephemeral_disk",
-			"update",
 			"vault",
 		}
 		if err := checkHCLKeys(listVal, valid); err != nil {
@@ -288,7 +287,6 @@ func parseGroups(result *api.Job, list *ast.ObjectList) error {
 		delete(m, "task")
 		delete(m, "restart")
 		delete(m, "ephemeral_disk")
-		delete(m, "update")
 		delete(m, "vault")
 
 		// Build the group with the basic decode
@@ -317,13 +315,6 @@ func parseGroups(result *api.Job, list *ast.ObjectList) error {
 			g.EphemeralDisk = &api.EphemeralDisk{}
 			if err := parseEphemeralDisk(&g.EphemeralDisk, o); err != nil {
 				return multierror.Prefix(err, fmt.Sprintf("'%s', ephemeral_disk ->", n))
-			}
-		}
-
-		// If we have an update strategy, then parse that
-		if o := listVal.Filter("update"); len(o.Items) > 0 {
-			if err := parseUpdate(&g.Update, o); err != nil {
-				return multierror.Prefix(err, "update ->")
 			}
 		}
 
@@ -586,7 +577,6 @@ func parseTasks(jobName string, taskGroupName string, result *[]*api.Task, list 
 			"meta",
 			"resources",
 			"service",
-			"shutdown_delay",
 			"template",
 			"user",
 			"vault",
@@ -789,7 +779,6 @@ func parseArtifacts(result *[]*api.TaskArtifact, list *ast.ObjectList) error {
 		valid := []string{
 			"source",
 			"options",
-			"mode",
 			"destination",
 		}
 		if err := checkHCLKeys(o.Val, valid); err != nil {
@@ -863,8 +852,6 @@ func parseTemplates(result *[]*api.Template, list *ast.ObjectList) error {
 			"right_delimiter",
 			"source",
 			"splay",
-			"env",
-			"vault_grace",
 		}
 		if err := checkHCLKeys(o.Val, valid); err != nil {
 			return err
@@ -908,7 +895,6 @@ func parseServices(jobName string, taskGroupName string, task *api.Task, service
 			"tags",
 			"port",
 			"check",
-			"address_mode",
 		}
 		if err := checkHCLKeys(o.Val, valid); err != nil {
 			return multierror.Prefix(err, fmt.Sprintf("service (%d) ->", idx))
@@ -961,9 +947,6 @@ func parseChecks(service *api.Service, checkObjs *ast.ObjectList) error {
 			"command",
 			"args",
 			"initial_status",
-			"tls_skip_verify",
-			"header",
-			"method",
 		}
 		if err := checkHCLKeys(co.Val, valid); err != nil {
 			return multierror.Prefix(err, "check ->")
@@ -974,37 +957,6 @@ func parseChecks(service *api.Service, checkObjs *ast.ObjectList) error {
 		if err := hcl.DecodeObject(&cm, co.Val); err != nil {
 			return err
 		}
-
-		// HCL allows repeating stanzas so merge 'header' into a single
-		// map[string][]string.
-		if headerI, ok := cm["header"]; ok {
-			headerRaw, ok := headerI.([]map[string]interface{})
-			if !ok {
-				return fmt.Errorf("check -> header -> expected a []map[string][]string but found %T", headerI)
-			}
-			m := map[string][]string{}
-			for _, rawm := range headerRaw {
-				for k, vI := range rawm {
-					vs, ok := vI.([]interface{})
-					if !ok {
-						return fmt.Errorf("check -> header -> %q expected a []string but found %T", k, vI)
-					}
-					for _, vI := range vs {
-						v, ok := vI.(string)
-						if !ok {
-							return fmt.Errorf("check -> header -> %q expected a string but found %T", k, vI)
-						}
-						m[k] = append(m[k], v)
-					}
-				}
-			}
-
-			check.Header = m
-
-			// Remove "header" as it has been parsed
-			delete(cm, "header")
-		}
-
 		dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 			DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
 			WeaklyTypedInput: true,
@@ -1151,7 +1103,7 @@ func parsePorts(networkObj *ast.ObjectList, nw *api.NetworkResource) error {
 func parseUpdate(result **api.UpdateStrategy, list *ast.ObjectList) error {
 	list = list.Elem()
 	if len(list.Items) > 1 {
-		return fmt.Errorf("only one 'update' block allowed")
+		return fmt.Errorf("only one 'update' block allowed per job")
 	}
 
 	// Get our resource object
@@ -1164,14 +1116,8 @@ func parseUpdate(result **api.UpdateStrategy, list *ast.ObjectList) error {
 
 	// Check for invalid keys
 	valid := []string{
-		// COMPAT: Remove in 0.7.0. Stagger is deprecated in 0.6.0.
 		"stagger",
 		"max_parallel",
-		"health_check",
-		"min_healthy_time",
-		"healthy_deadline",
-		"auto_revert",
-		"canary",
 	}
 	if err := checkHCLKeys(o.Val, valid); err != nil {
 		return err

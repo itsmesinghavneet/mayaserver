@@ -9,7 +9,7 @@ import (
 )
 
 func TestVaultFingerprint(t *testing.T) {
-	tv := testutil.NewTestVault(t)
+	tv := testutil.NewTestVault(t).Start()
 	defer tv.Stop()
 
 	fp := NewVaultFingerprint(testLogger())

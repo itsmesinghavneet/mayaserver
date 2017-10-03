@@ -16,15 +16,6 @@ import (
 	"github.com/hashicorp/nomad/nomad/structs"
 )
 
-// fakeReplacer is a noop version of env.TaskEnv.ReplanceEnv
-type fakeReplacer struct{}
-
-func (fakeReplacer) ReplaceEnv(s string) string {
-	return s
-}
-
-var taskEnv = fakeReplacer{}
-
 func TestGetArtifact_FileAndChecksum(t *testing.T) {
 	// Create the test server hosting the file to download
 	ts := httptest.NewServer(http.FileServer(http.Dir(filepath.Dir("./test-fixtures/"))))
@@ -47,6 +38,7 @@ func TestGetArtifact_FileAndChecksum(t *testing.T) {
 	}
 
 	// Download the artifact
+	taskEnv := env.NewTaskEnvironment(mock.Node())
 	if err := GetArtifact(taskEnv, artifact, taskDir); err != nil {
 		t.Fatalf("GetArtifact failed: %v", err)
 	}
@@ -81,6 +73,7 @@ func TestGetArtifact_File_RelativeDest(t *testing.T) {
 	}
 
 	// Download the artifact
+	taskEnv := env.NewTaskEnvironment(mock.Node())
 	if err := GetArtifact(taskEnv, artifact, taskDir); err != nil {
 		t.Fatalf("GetArtifact failed: %v", err)
 	}
@@ -98,11 +91,7 @@ func TestGetGetterUrl_Interprolation(t *testing.T) {
 	}
 
 	url := "foo.com"
-	alloc := mock.Alloc()
-	task := alloc.Job.TaskGroups[0].Tasks[0]
-	task.Meta = map[string]string{"artifact": url}
-	taskEnv := env.NewBuilder(mock.Node(), alloc, task, "global").Build()
-
+	taskEnv := env.NewTaskEnvironment(mock.Node()).SetTaskMeta(map[string]string{"artifact": url})
 	act, err := getGetterUrl(taskEnv, artifact)
 	if err != nil {
 		t.Fatalf("getGetterUrl() failed: %v", err)
@@ -135,6 +124,7 @@ func TestGetArtifact_InvalidChecksum(t *testing.T) {
 	}
 
 	// Download the artifact and expect an error
+	taskEnv := env.NewTaskEnvironment(mock.Node())
 	if err := GetArtifact(taskEnv, artifact, taskDir); err == nil {
 		t.Fatalf("GetArtifact should have failed")
 	}
@@ -200,6 +190,7 @@ func TestGetArtifact_Archive(t *testing.T) {
 		},
 	}
 
+	taskEnv := env.NewTaskEnvironment(mock.Node())
 	if err := GetArtifact(taskEnv, artifact, taskDir); err != nil {
 		t.Fatalf("GetArtifact failed: %v", err)
 	}
@@ -215,6 +206,7 @@ func TestGetArtifact_Archive(t *testing.T) {
 }
 
 func TestGetGetterUrl_Queries(t *testing.T) {
+	taskEnv := env.NewTaskEnvironment(mock.Node())
 	cases := []struct {
 		name     string
 		artifact *structs.TaskArtifact

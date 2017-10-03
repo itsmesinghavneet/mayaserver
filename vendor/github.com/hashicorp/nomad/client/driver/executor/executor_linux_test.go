@@ -37,9 +37,9 @@ func testExecutorContextWithChroot(t *testing.T) (*ExecutorContext, *allocdir.Al
 		"/foobar":           "/does/not/exist",
 	}
 
+	taskEnv := env.NewTaskEnvironment(mock.Node())
 	alloc := mock.Alloc()
 	task := alloc.Job.TaskGroups[0].Tasks[0]
-	taskEnv := env.NewBuilder(mock.Node(), alloc, task, "global").Build()
 
 	allocDir := allocdir.NewAllocDir(testLogger(), filepath.Join(os.TempDir(), alloc.ID))
 	if err := allocDir.Build(); err != nil {
@@ -60,7 +60,6 @@ func testExecutorContextWithChroot(t *testing.T) (*ExecutorContext, *allocdir.Al
 }
 
 func TestExecutor_IsolationAndConstraints(t *testing.T) {
-	t.Parallel()
 	testutil.ExecCompatible(t)
 
 	execCmd := ExecCommand{Cmd: "/bin/ls", Args: []string{"-F", "/", "/etc/"}}
@@ -140,7 +139,6 @@ ld.so.conf.d/`
 }
 
 func TestExecutor_ClientCleanup(t *testing.T) {
-	t.Parallel()
 	testutil.ExecCompatible(t)
 
 	ctx, allocDir := testExecutorContextWithChroot(t)

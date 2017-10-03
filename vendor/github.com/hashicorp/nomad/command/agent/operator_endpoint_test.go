@@ -11,8 +11,7 @@ import (
 )
 
 func TestHTTP_OperatorRaftConfiguration(t *testing.T) {
-	t.Parallel()
-	httpTest(t, nil, func(s *TestAgent) {
+	httpTest(t, nil, func(s *TestServer) {
 		body := bytes.NewBuffer(nil)
 		req, err := http.NewRequest("GET", "/v1/operator/raft/configuration", body)
 		if err != nil {
@@ -40,8 +39,7 @@ func TestHTTP_OperatorRaftConfiguration(t *testing.T) {
 }
 
 func TestHTTP_OperatorRaftPeer(t *testing.T) {
-	t.Parallel()
-	httpTest(t, nil, func(s *TestAgent) {
+	httpTest(t, nil, func(s *TestServer) {
 		body := bytes.NewBuffer(nil)
 		req, err := http.NewRequest("DELETE", "/v1/operator/raft/peer?address=nope", body)
 		if err != nil {

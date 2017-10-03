@@ -22,7 +22,6 @@ import (
 	"github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/nomad/command/agent/consul"
 	"github.com/hashicorp/nomad/helper/tlsutil"
-	"github.com/hashicorp/nomad/nomad/deploymentwatcher"
 	"github.com/hashicorp/nomad/nomad/state"
 	"github.com/hashicorp/nomad/nomad/structs"
 	"github.com/hashicorp/raft"
@@ -64,14 +63,6 @@ const (
 	// raftRemoveGracePeriod is how long we wait to allow a RemovePeer
 	// to replicate to gracefully leave the cluster.
 	raftRemoveGracePeriod = 5 * time.Second
-
-	// defaultConsulDiscoveryInterval is how often to poll Consul for new
-	// servers if there is no leader.
-	defaultConsulDiscoveryInterval time.Duration = 3 * time.Second
-
-	// defaultConsulDiscoveryIntervalRetry is how often to poll Consul for
-	// new servers if there is no leader and the last Consul query failed.
-	defaultConsulDiscoveryIntervalRetry time.Duration = 9 * time.Second
 )
 
 // Server is Nomad server which manages the job queues,
@@ -125,32 +116,28 @@ type Server struct {
 	// eventCh is used to receive events from the serf cluster
 	eventCh chan serf.Event
 
-	// BlockedEvals is used to manage evaluations that are blocked on node
-	// capacity changes.
-	blockedEvals *BlockedEvals
-
-	// deploymentWatcher is used to watch deployments and their allocations and
-	// make the required calls to continue to transition the deployment.
-	deploymentWatcher *deploymentwatcher.Watcher
-
 	// evalBroker is used to manage the in-progress evaluations
 	// that are waiting to be brokered to a sub-scheduler
 	evalBroker *EvalBroker
 
-	// periodicDispatcher is used to track and create evaluations for periodic jobs.
-	periodicDispatcher *PeriodicDispatch
+	// BlockedEvals is used to manage evaluations that are blocked on node
+	// capacity changes.
+	blockedEvals *BlockedEvals
 
 	// planQueue is used to manage the submitted allocation
 	// plans that are waiting to be assessed by the leader
 	planQueue *PlanQueue
+
+	// periodicDispatcher is used to track and create evaluations for periodic jobs.
+	periodicDispatcher *PeriodicDispatch
 
 	// heartbeatTimers track the expiration time of each heartbeat that has
 	// a TTL. On expiration, the node status is updated to be 'down'.
 	heartbeatTimers     map[string]*time.Timer
 	heartbeatTimersLock sync.Mutex
 
-	// consulCatalog is used for discovering other Nomad Servers via Consul
-	consulCatalog consul.CatalogAPI
+	// consulSyncer advertises this Nomad Agent with Consul
+	consulSyncer *consul.Syncer
 
 	// vault is the client for communicating with Vault.
 	vault VaultClient
@@ -166,34 +153,28 @@ type Server struct {
 
 // Holds the RPC endpoints
 type endpoints struct {
-	Status     *Status
-	Node       *Node
-	Job        *Job
-	Eval       *Eval
-	Plan       *Plan
-	Alloc      *Alloc
-	Deployment *Deployment
-	Region     *Region
-	Search     *Search
-	Periodic   *Periodic
-	System     *System
-	Operator   *Operator
+	Status   *Status
+	Node     *Node
+	Job      *Job
+	Eval     *Eval
+	Plan     *Plan
+	Alloc    *Alloc
+	Region   *Region
+	Periodic *Periodic
+	System   *System
+	Operator *Operator
 }
 
 // NewServer is used to construct a new Nomad server from the
 // configuration, potentially returning an error
-func NewServer(config *Config, consulCatalog consul.CatalogAPI, logger *log.Logger) (*Server, error) {
+func NewServer(config *Config, consulSyncer *consul.Syncer, logger *log.Logger) (*Server, error) {
 	// Check the protocol version
 	if err := config.CheckVersion(); err != nil {
 		return nil, err
 	}
 
 	// Create an eval broker
-	evalBroker, err := NewEvalBroker(
-		config.EvalNackTimeout,
-		config.EvalNackInitialReenqueueDelay,
-		config.EvalNackSubsequentReenqueueDelay,
-		config.EvalDeliveryLimit)
+	evalBroker, err := NewEvalBroker(config.EvalNackTimeout, config.EvalDeliveryLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -227,20 +208,20 @@ func NewServer(config *Config, consulCatalog consul.CatalogAPI, logger *log.Logg
 
 	// Create the server
 	s := &Server{
-		config:        config,
-		consulCatalog: consulCatalog,
-		connPool:      NewPool(config.LogOutput, serverRPCCache, serverMaxStreams, tlsWrap),
-		logger:        logger,
-		rpcServer:     rpc.NewServer(),
-		peers:         make(map[string][]*serverParts),
-		localPeers:    make(map[raft.ServerAddress]*serverParts),
-		reconcileCh:   make(chan serf.Member, 32),
-		eventCh:       make(chan serf.Event, 256),
-		evalBroker:    evalBroker,
-		blockedEvals:  blockedEvals,
-		planQueue:     planQueue,
-		rpcTLS:        incomingTLS,
-		shutdownCh:    make(chan struct{}),
+		config:       config,
+		consulSyncer: consulSyncer,
+		connPool:     NewPool(config.LogOutput, serverRPCCache, serverMaxStreams, tlsWrap),
+		logger:       logger,
+		rpcServer:    rpc.NewServer(),
+		peers:        make(map[string][]*serverParts),
+		localPeers:   make(map[raft.ServerAddress]*serverParts),
+		reconcileCh:  make(chan serf.Member, 32),
+		eventCh:      make(chan serf.Event, 256),
+		evalBroker:   evalBroker,
+		blockedEvals: blockedEvals,
+		planQueue:    planQueue,
+		rpcTLS:       incomingTLS,
+		shutdownCh:   make(chan struct{}),
 	}
 
 	// Create the periodic dispatcher for launching periodic jobs.
@@ -285,11 +266,6 @@ func NewServer(config *Config, consulCatalog consul.CatalogAPI, logger *log.Logg
 	// Setup the Consul syncer
 	if err := s.setupConsulSyncer(); err != nil {
 		return nil, fmt.Errorf("failed to create server Consul syncer: %v", err)
-	}
-
-	// Setup the deployment watcher.
-	if err := s.setupDeploymentWatcher(); err != nil {
-		return nil, fmt.Errorf("failed to create deployment watcher: %v", err)
 	}
 
 	// Monitor leadership changes
@@ -562,7 +538,8 @@ func (s *Server) setupBootstrapHandler() error {
 
 		s.logger.Printf("[DEBUG] server.nomad: lost contact with Nomad quorum, falling back to Consul for server list")
 
-		dcs, err := s.consulCatalog.Datacenters()
+		consulCatalog := s.consulSyncer.ConsulClient().Catalog()
+		dcs, err := consulCatalog.Datacenters()
 		if err != nil {
 			peersTimeout.Reset(peersPollInterval + lib.RandomStagger(peersPollInterval/peersPollJitterFactor))
 			return fmt.Errorf("server.nomad: unable to query Consul datacenters: %v", err)
@@ -589,7 +566,7 @@ func (s *Server) setupBootstrapHandler() error {
 				Near:       "_agent",
 				WaitTime:   consul.DefaultQueryWaitDuration,
 			}
-			consulServices, _, err := s.consulCatalog.Service(nomadServerServiceName, consul.ServiceTagSerf, consulOpts)
+			consulServices, _, err := consulCatalog.Service(nomadServerServiceName, consul.ServiceTagSerf, consulOpts)
 			if err != nil {
 				err := fmt.Errorf("failed to query service %q in Consul datacenter %q: %v", nomadServerServiceName, dc, err)
 				s.logger.Printf("[WARN] server.nomad: %v", err)
@@ -637,28 +614,7 @@ func (s *Server) setupBootstrapHandler() error {
 		return nil
 	}
 
-	// Hacky replacement for old ConsulSyncer Periodic Handler.
-	go func() {
-		lastOk := true
-		sync := time.NewTimer(0)
-		for {
-			select {
-			case <-sync.C:
-				d := defaultConsulDiscoveryInterval
-				if err := bootstrapFn(); err != nil {
-					// Only log if it worked last time
-					if lastOk {
-						lastOk = false
-						s.logger.Printf("[ERR] consul: error looking up Nomad servers: %v", err)
-					}
-					d = defaultConsulDiscoveryIntervalRetry
-				}
-				sync.Reset(d)
-			case <-s.shutdownCh:
-				return
-			}
-		}
-	}()
+	s.consulSyncer.AddPeriodicHandler("Nomad Server Fallback Server Handler", bootstrapFn)
 	return nil
 }
 
@@ -670,34 +626,6 @@ func (s *Server) setupConsulSyncer() error {
 			return err
 		}
 	}
-
-	return nil
-}
-
-// setupDeploymentWatcher creates a deployment watcher that consumes the RPC
-// endpoints for state information and makes transistions via Raft through a
-// shim that provides the appropriate methods.
-func (s *Server) setupDeploymentWatcher() error {
-
-	// Create the shims
-	stateShim := &deploymentWatcherStateShim{
-		region:         s.Region(),
-		evaluations:    s.endpoints.Job.Evaluations,
-		allocations:    s.endpoints.Deployment.Allocations,
-		list:           s.endpoints.Deployment.List,
-		getDeployment:  s.endpoints.Deployment.GetDeployment,
-		getJobVersions: s.endpoints.Job.GetJobVersions,
-		getJob:         s.endpoints.Job.GetJob,
-	}
-	raftShim := &deploymentWatcherRaftShim{
-		apply: s.raftApply,
-	}
-
-	// Create the deployment watcher
-	s.deploymentWatcher = deploymentwatcher.NewDeploymentsWatcher(
-		s.logger, stateShim, raftShim,
-		deploymentwatcher.LimitStateQueriesPerSecond,
-		deploymentwatcher.CrossDeploymentEvalBatchDuration)
 
 	return nil
 }
@@ -719,28 +647,24 @@ func (s *Server) setupRPC(tlsWrap tlsutil.RegionWrapper) error {
 	s.endpoints.Eval = &Eval{s}
 	s.endpoints.Job = &Job{s}
 	s.endpoints.Node = &Node{srv: s}
-	s.endpoints.Deployment = &Deployment{srv: s}
 	s.endpoints.Operator = &Operator{s}
 	s.endpoints.Periodic = &Periodic{s}
 	s.endpoints.Plan = &Plan{s}
 	s.endpoints.Region = &Region{s}
 	s.endpoints.Status = &Status{s}
 	s.endpoints.System = &System{s}
-	s.endpoints.Search = &Search{s}
 
 	// Register the handlers
 	s.rpcServer.Register(s.endpoints.Alloc)
 	s.rpcServer.Register(s.endpoints.Eval)
 	s.rpcServer.Register(s.endpoints.Job)
 	s.rpcServer.Register(s.endpoints.Node)
-	s.rpcServer.Register(s.endpoints.Deployment)
 	s.rpcServer.Register(s.endpoints.Operator)
 	s.rpcServer.Register(s.endpoints.Periodic)
 	s.rpcServer.Register(s.endpoints.Plan)
 	s.rpcServer.Register(s.endpoints.Region)
 	s.rpcServer.Register(s.endpoints.Status)
 	s.rpcServer.Register(s.endpoints.System)
-	s.rpcServer.Register(s.endpoints.Search)
 
 	list, err := net.ListenTCP("tcp", s.config.RPCAddr)
 	if err != nil {
@@ -1122,7 +1046,7 @@ func (s *Server) Stats() map[string]map[string]string {
 	return stats
 }
 
-// Region returns the region of the server
+// Region retuns the region of the server
 func (s *Server) Region() string {
 	return s.config.Region
 }
@@ -1143,7 +1067,7 @@ func (s *Server) GetConfig() *Config {
 const peersInfoContent = `
 As of Nomad 0.5.5, the peers.json file is only used for recovery
 after an outage. It should be formatted as a JSON array containing the address
-and port (RPC) of each Nomad server in the cluster, like this:
+and port of each Consul server in the cluster, like this:
 
 ["10.1.0.1:4647","10.1.0.2:4647","10.1.0.3:4647"]
 

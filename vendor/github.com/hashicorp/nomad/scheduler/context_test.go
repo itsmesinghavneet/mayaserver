@@ -53,13 +53,11 @@ func TestEvalContext_ProposedAlloc(t *testing.T) {
 	}
 
 	// Add existing allocations
-	j1, j2 := mock.Job(), mock.Job()
 	alloc1 := &structs.Allocation{
 		ID:     structs.GenerateUUID(),
 		EvalID: structs.GenerateUUID(),
 		NodeID: nodes[0].Node.ID,
-		JobID:  j1.ID,
-		Job:    j1,
+		JobID:  structs.GenerateUUID(),
 		Resources: &structs.Resources{
 			CPU:      2048,
 			MemoryMB: 2048,
@@ -72,8 +70,7 @@ func TestEvalContext_ProposedAlloc(t *testing.T) {
 		ID:     structs.GenerateUUID(),
 		EvalID: structs.GenerateUUID(),
 		NodeID: nodes[1].Node.ID,
-		JobID:  j2.ID,
-		Job:    j2,
+		JobID:  structs.GenerateUUID(),
 		Resources: &structs.Resources{
 			CPU:      1024,
 			MemoryMB: 1024,

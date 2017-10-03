@@ -9,16 +9,12 @@ import (
 
 	"github.com/hashicorp/nomad/client/config"
 	"github.com/hashicorp/nomad/nomad/structs"
-	"github.com/hashicorp/nomad/testutil"
 
 	ctestutils "github.com/hashicorp/nomad/client/testutil"
 )
 
 // The fingerprinter test should always pass, even if QEMU is not installed.
 func TestQemuDriver_Fingerprint(t *testing.T) {
-	if !testutil.IsTravis() {
-		t.Parallel()
-	}
 	ctestutils.QemuCompatible(t)
 	task := &structs.Task{
 		Name:      "foo",
@@ -48,9 +44,6 @@ func TestQemuDriver_Fingerprint(t *testing.T) {
 }
 
 func TestQemuDriver_StartOpen_Wait(t *testing.T) {
-	if !testutil.IsTravis() {
-		t.Parallel()
-	}
 	ctestutils.QemuCompatible(t)
 	task := &structs.Task{
 		Name:   "linux",
@@ -91,18 +84,21 @@ func TestQemuDriver_StartOpen_Wait(t *testing.T) {
 		t.Fatalf("Prestart faild: %v", err)
 	}
 
-	resp, err := d.Start(ctx.ExecCtx, task)
+	handle, err := d.Start(ctx.ExecCtx, task)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
+	if handle == nil {
+		t.Fatalf("missing handle")
+	}
 
 	// Ensure that sending a Signal returns an error
-	if err := resp.Handle.Signal(syscall.SIGINT); err == nil {
+	if err := handle.Signal(syscall.SIGINT); err == nil {
 		t.Fatalf("Expect an error when signalling")
 	}
 
 	// Attempt to open
-	handle2, err := d.Open(ctx.ExecCtx, resp.Handle.ID())
+	handle2, err := d.Open(ctx.ExecCtx, handle.ID())
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -111,15 +107,12 @@ func TestQemuDriver_StartOpen_Wait(t *testing.T) {
 	}
 
 	// Clean up
-	if err := resp.Handle.Kill(); err != nil {
+	if err := handle.Kill(); err != nil {
 		fmt.Printf("\nError killing Qemu test: %s", err)
 	}
 }
 
 func TestQemuDriverUser(t *testing.T) {
-	if !testutil.IsTravis() {
-		t.Parallel()
-	}
 	ctestutils.QemuCompatible(t)
 	task := &structs.Task{
 		Name:   "linux",
@@ -157,9 +150,9 @@ func TestQemuDriverUser(t *testing.T) {
 		t.Fatalf("Prestart faild: %v", err)
 	}
 
-	resp, err := d.Start(ctx.ExecCtx, task)
+	handle, err := d.Start(ctx.ExecCtx, task)
 	if err == nil {
-		resp.Handle.Kill()
+		handle.Kill()
 		t.Fatalf("Should've failed")
 	}
 	msg := "unknown user alice"

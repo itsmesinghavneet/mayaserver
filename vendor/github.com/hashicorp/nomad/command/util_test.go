@@ -4,22 +4,39 @@ import (
 	"testing"
 
 	"github.com/hashicorp/nomad/api"
-	"github.com/hashicorp/nomad/command/agent"
 	"github.com/hashicorp/nomad/helper"
+	"github.com/hashicorp/nomad/testutil"
 )
 
-func testServer(t *testing.T, runClient bool, cb func(*agent.Config)) (*agent.TestAgent, *api.Client, string) {
+// seen is used to track which tests we have already
+// marked as parallel. Marking twice causes panic.
+var seen map[*testing.T]struct{}
+
+func init() {
+	seen = make(map[*testing.T]struct{})
+}
+
+func testServer(
+	t *testing.T,
+	cb testutil.ServerConfigCallback) (*testutil.TestServer, *api.Client, string) {
+
+	// Always run these tests in parallel.
+	if _, ok := seen[t]; !ok {
+		seen[t] = struct{}{}
+		t.Parallel()
+	}
+
 	// Make a new test server
-	a := agent.NewTestAgent(t.Name(), func(config *agent.Config) {
-		config.Client.Enabled = runClient
+	srv := testutil.NewTestServer(t, cb)
 
-		if cb != nil {
-			cb(config)
-		}
-	})
-
-	c := a.Client()
-	return a, c, a.HTTPAddr()
+	// Make a client
+	clientConf := api.DefaultConfig()
+	clientConf.Address = "http://" + srv.HTTPAddr
+	client, err := api.NewClient(clientConf)
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+	return srv, client, clientConf.Address
 }
 
 func testJob(jobID string) *api.Job {

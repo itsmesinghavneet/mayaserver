@@ -12,18 +12,10 @@
     margin-bottom: 0;
   }
 
-  pre,
-  code,
-  pre code,
-  tt {
-    font-family: $font-family-monospace;
-    font-size: $font-size - 2;
-    line-height: 1.6;
-  }
-
   pre {
-    padding: 20px;
-    margin: 0 0 $font-size;
+    font-family: $font-family-monospace;
+    font-size: ($font-size - 3);
+    font-weight: normal;
     padding: 20px;
     margin: 0 0 $font-size;
 

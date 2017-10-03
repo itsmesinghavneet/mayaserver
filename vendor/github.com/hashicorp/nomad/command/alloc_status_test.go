@@ -5,23 +5,18 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/nomad/nomad/mock"
 	"github.com/hashicorp/nomad/nomad/structs"
 	"github.com/hashicorp/nomad/testutil"
 	"github.com/mitchellh/cli"
-	"github.com/posener/complete"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestAllocStatusCommand_Implements(t *testing.T) {
-	t.Parallel()
 	var _ cli.Command = &AllocStatusCommand{}
 }
 
 func TestAllocStatusCommand_Fails(t *testing.T) {
-	t.Parallel()
-	srv, _, url := testServer(t, false, nil)
-	defer srv.Shutdown()
+	srv, _, url := testServer(t, nil)
+	defer srv.Stop()
 
 	ui := new(cli.MockUi)
 	cmd := &AllocStatusCommand{Meta: Meta{Ui: ui}}
@@ -75,15 +70,16 @@ func TestAllocStatusCommand_Fails(t *testing.T) {
 	if code := cmd.Run([]string{"-address=" + url, "-json", "-t", "{{.ID}}"}); code != 1 {
 		t.Fatalf("expected exit 1, got: %d", code)
 	}
-	if out := ui.ErrorWriter.String(); !strings.Contains(out, "Both json and template formatting are not allowed") {
+	if out := ui.ErrorWriter.String(); !strings.Contains(out, "Both -json and -t are not allowed") {
 		t.Fatalf("expected getting formatter error, got: %s", out)
 	}
 }
 
 func TestAllocStatusCommand_Run(t *testing.T) {
-	t.Parallel()
-	srv, client, url := testServer(t, true, nil)
-	defer srv.Shutdown()
+	srv, client, url := testServer(t, func(c *testutil.TestServerConfig) {
+		c.DevMode = true
+	})
+	defer srv.Stop()
 
 	// Wait for a node to be ready
 	testutil.WaitForResult(func() (bool, error) {
@@ -106,11 +102,11 @@ func TestAllocStatusCommand_Run(t *testing.T) {
 
 	jobID := "job1_sfx"
 	job1 := testJob(jobID)
-	resp, _, err := client.Jobs().Register(job1, nil)
+	evalId1, _, err := client.Jobs().Register(job1, nil)
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}
-	if code := waitForSuccess(ui, client, fullId, t, resp.EvalID); code != 0 {
+	if code := waitForSuccess(ui, client, fullId, t, evalId1); code != 0 {
 		t.Fatalf("status code non zero saw %d", code)
 	}
 	// get an alloc id
@@ -144,47 +140,4 @@ func TestAllocStatusCommand_Run(t *testing.T) {
 		t.Fatalf("expected to have 'Created At' but saw: %s", out)
 	}
 	ui.OutputWriter.Reset()
-
-	// Try the query with an even prefix that includes the hyphen
-	if code := cmd.Run([]string{"-address=" + url, allocId1[:13]}); code != 0 {
-		t.Fatalf("expected exit 0, got: %d", code)
-	}
-	out = ui.OutputWriter.String()
-	if !strings.Contains(out, "Created At") {
-		t.Fatalf("expected to have 'Created At' but saw: %s", out)
-	}
-	ui.OutputWriter.Reset()
-
-	if code := cmd.Run([]string{"-address=" + url, "-verbose", allocId1}); code != 0 {
-		t.Fatalf("expected exit 0, got: %d", code)
-	}
-	out = ui.OutputWriter.String()
-	if !strings.Contains(out, allocId1) {
-		t.Fatal("expected to find alloc id in output")
-	}
-	ui.OutputWriter.Reset()
-}
-
-func TestAllocStatusCommand_AutocompleteArgs(t *testing.T) {
-	assert := assert.New(t)
-	t.Parallel()
-
-	srv, _, url := testServer(t, true, nil)
-	defer srv.Shutdown()
-
-	ui := new(cli.MockUi)
-	cmd := &AllocStatusCommand{Meta: Meta{Ui: ui, flagAddress: url}}
-
-	// Create a fake alloc
-	state := srv.Agent.Server().State()
-	a := mock.Alloc()
-	assert.Nil(state.UpsertAllocs(1000, []*structs.Allocation{a}))
-
-	prefix := a.ID[:5]
-	args := complete.Args{Last: prefix}
-	predictor := cmd.AutocompleteArgs()
-
-	res := predictor.Predict(args)
-	assert.Equal(1, len(res))
-	assert.Equal(a.ID, res[0])
 }

@@ -12,7 +12,6 @@ import (
 )
 
 func TestAllocEndpoint_List(t *testing.T) {
-	t.Parallel()
 	s1 := testServer(t, nil)
 	defer s1.Shutdown()
 	codec := rpcClient(t, s1)
@@ -71,7 +70,6 @@ func TestAllocEndpoint_List(t *testing.T) {
 }
 
 func TestAllocEndpoint_List_Blocking(t *testing.T) {
-	t.Parallel()
 	s1 := testServer(t, nil)
 	defer s1.Shutdown()
 	state := s1.fsm.State()
@@ -145,7 +143,6 @@ func TestAllocEndpoint_List_Blocking(t *testing.T) {
 }
 
 func TestAllocEndpoint_GetAlloc(t *testing.T) {
-	t.Parallel()
 	s1 := testServer(t, nil)
 	defer s1.Shutdown()
 	codec := rpcClient(t, s1)
@@ -179,7 +176,6 @@ func TestAllocEndpoint_GetAlloc(t *testing.T) {
 }
 
 func TestAllocEndpoint_GetAlloc_Blocking(t *testing.T) {
-	t.Parallel()
 	s1 := testServer(t, nil)
 	defer s1.Shutdown()
 	state := s1.fsm.State()
@@ -234,7 +230,6 @@ func TestAllocEndpoint_GetAlloc_Blocking(t *testing.T) {
 }
 
 func TestAllocEndpoint_GetAllocs(t *testing.T) {
-	t.Parallel()
 	s1 := testServer(t, nil)
 	defer s1.Shutdown()
 	codec := rpcClient(t, s1)
@@ -281,7 +276,6 @@ func TestAllocEndpoint_GetAllocs(t *testing.T) {
 }
 
 func TestAllocEndpoint_GetAllocs_Blocking(t *testing.T) {
-	t.Parallel()
 	s1 := testServer(t, nil)
 	defer s1.Shutdown()
 	state := s1.fsm.State()

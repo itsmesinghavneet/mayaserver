@@ -1,7 +1,6 @@
 package driver
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -86,7 +85,6 @@ func (d *ExecDriver) Validate(config map[string]interface{}) error {
 func (d *ExecDriver) Abilities() DriverAbilities {
 	return DriverAbilities{
 		SendSignals: true,
-		Exec:        true,
 	}
 }
 
@@ -98,11 +96,11 @@ func (d *ExecDriver) Periodic() (bool, time.Duration) {
 	return true, 15 * time.Second
 }
 
-func (d *ExecDriver) Prestart(*ExecContext, *structs.Task) (*PrestartResponse, error) {
+func (d *ExecDriver) Prestart(*ExecContext, *structs.Task) (*CreatedResources, error) {
 	return nil, nil
 }
 
-func (d *ExecDriver) Start(ctx *ExecContext, task *structs.Task) (*StartResponse, error) {
+func (d *ExecDriver) Start(ctx *ExecContext, task *structs.Task) (DriverHandle, error) {
 	var driverConfig ExecDriverConfig
 	if err := mapstructure.WeakDecode(task.Config, &driverConfig); err != nil {
 		return nil, err
@@ -124,7 +122,7 @@ func (d *ExecDriver) Start(ctx *ExecContext, task *structs.Task) (*StartResponse
 		return nil, err
 	}
 	executorCtx := &executor.ExecutorContext{
-		TaskEnv: ctx.TaskEnv,
+		TaskEnv: d.taskEnv,
 		Driver:  "exec",
 		AllocID: d.DriverContext.allocID,
 		LogDir:  ctx.TaskDir.LogDir,
@@ -162,13 +160,15 @@ func (d *ExecDriver) Start(ctx *ExecContext, task *structs.Task) (*StartResponse
 		killTimeout:     GetKillTimeout(task.KillTimeout, maxKill),
 		maxKillTimeout:  maxKill,
 		logger:          d.logger,
-		version:         d.config.Version.VersionNumber(),
+		version:         d.config.Version,
 		doneCh:          make(chan struct{}),
 		waitCh:          make(chan *dstructs.WaitResult, 1),
-		taskDir:         ctx.TaskDir,
+	}
+	if err := exec.SyncServices(consulContext(d.config, "")); err != nil {
+		d.logger.Printf("[ERR] driver.exec: error registering services with consul for task: %q: %v", task.Name, err)
 	}
 	go h.run()
-	return &StartResponse{Handle: h}, nil
+	return h, nil
 }
 
 func (d *ExecDriver) Cleanup(*ExecContext, *CreatedResources) error { return nil }
@@ -222,7 +222,9 @@ func (d *ExecDriver) Open(ctx *ExecContext, handleID string) (DriverHandle, erro
 		maxKillTimeout:  id.MaxKillTimeout,
 		doneCh:          make(chan struct{}),
 		waitCh:          make(chan *dstructs.WaitResult, 1),
-		taskDir:         ctx.TaskDir,
+	}
+	if err := exec.SyncServices(consulContext(d.config, "")); err != nil {
+		d.logger.Printf("[ERR] driver.exec: error registering services with consul: %v", err)
 	}
 	go h.run()
 	return h, nil
@@ -256,15 +258,6 @@ func (h *execHandle) Update(task *structs.Task) error {
 
 	// Update is not possible
 	return nil
-}
-
-func (h *execHandle) Exec(ctx context.Context, cmd string, args []string) ([]byte, int, error) {
-	deadline, ok := ctx.Deadline()
-	if !ok {
-		// No deadline set on context; default to 1 minute
-		deadline = time.Now().Add(time.Minute)
-	}
-	return h.executor.Exec(deadline, cmd, args)
 }
 
 func (h *execHandle) Signal(s os.Signal) error {
@@ -312,6 +305,11 @@ func (h *execHandle) run() {
 				h.logger.Printf("[ERR] driver.exec: destroying resource container failed: %v", e)
 			}
 		}
+	}
+
+	// Remove services
+	if err := h.executor.DeregisterServices(); err != nil {
+		h.logger.Printf("[ERR] driver.exec: failed to deregister services: %v", err)
 	}
 
 	// Exit the executor

@@ -346,7 +346,6 @@ func parseClient(result **ClientConfig, list *ast.ObjectList) error {
 		"gc_disk_usage_threshold",
 		"gc_inode_usage_threshold",
 		"gc_parallel_destroys",
-		"gc_max_allocs",
 		"no_host_uuid",
 	}
 	if err := checkHCLKeys(listVal, valid); err != nil {
@@ -504,10 +503,7 @@ func parseServer(result **ServerConfig, list *ast.ObjectList) error {
 		"node_gc_threshold",
 		"eval_gc_threshold",
 		"job_gc_threshold",
-		"deployment_gc_threshold",
 		"heartbeat_grace",
-		"min_heartbeat_ttl",
-		"max_heartbeats_per_second",
 		"start_join",
 		"retry_join",
 		"retry_max",
@@ -525,15 +521,7 @@ func parseServer(result **ServerConfig, list *ast.ObjectList) error {
 	}
 
 	var config ServerConfig
-	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
-		WeaklyTypedInput: true,
-		Result:           &config,
-	})
-	if err != nil {
-		return err
-	}
-	if err := dec.Decode(m); err != nil {
+	if err := mapstructure.WeakDecode(m, &config); err != nil {
 		return err
 	}
 
@@ -701,7 +689,6 @@ func parseTLSConfig(result **config.TLSConfig, list *ast.ObjectList) error {
 		"ca_file",
 		"cert_file",
 		"key_file",
-		"verify_https_client",
 	}
 
 	if err := checkHCLKeys(listVal, valid); err != nil {

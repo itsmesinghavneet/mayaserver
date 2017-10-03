@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	gg "github.com/hashicorp/go-getter"
+	"github.com/hashicorp/nomad/client/driver/env"
 	"github.com/hashicorp/nomad/nomad/structs"
 )
 
@@ -26,14 +27,8 @@ const (
 	gitSSHPrefix = "git@github.com:"
 )
 
-// EnvReplacer is an interface which can interpolate environment variables and
-// is usually satisfied by env.TaskEnv.
-type EnvReplacer interface {
-	ReplaceEnv(string) string
-}
-
 // getClient returns a client that is suitable for Nomad downloading artifacts.
-func getClient(src string, mode gg.ClientMode, dst string) *gg.Client {
+func getClient(src, dst string) *gg.Client {
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -50,13 +45,14 @@ func getClient(src string, mode gg.ClientMode, dst string) *gg.Client {
 	return &gg.Client{
 		Src:     src,
 		Dst:     dst,
-		Mode:    mode,
+		Mode:    gg.ClientModeAny,
 		Getters: getters,
 	}
 }
 
 // getGetterUrl returns the go-getter URL to download the artifact.
-func getGetterUrl(taskEnv EnvReplacer, artifact *structs.TaskArtifact) (string, error) {
+func getGetterUrl(taskEnv *env.TaskEnvironment, artifact *structs.TaskArtifact) (string, error) {
+	taskEnv.Build()
 	source := taskEnv.ReplaceEnv(artifact.GetterSource)
 
 	// Handle an invalid URL when given a go-getter url such as
@@ -89,7 +85,7 @@ func getGetterUrl(taskEnv EnvReplacer, artifact *structs.TaskArtifact) (string, 
 }
 
 // GetArtifact downloads an artifact into the specified task directory.
-func GetArtifact(taskEnv EnvReplacer, artifact *structs.TaskArtifact, taskDir string) error {
+func GetArtifact(taskEnv *env.TaskEnvironment, artifact *structs.TaskArtifact, taskDir string) error {
 	url, err := getGetterUrl(taskEnv, artifact)
 	if err != nil {
 		return newGetError(artifact.GetterSource, err, false)
@@ -97,17 +93,7 @@ func GetArtifact(taskEnv EnvReplacer, artifact *structs.TaskArtifact, taskDir st
 
 	// Download the artifact
 	dest := filepath.Join(taskDir, artifact.RelativeDest)
-
-	// Convert from string getter mode to go-getter const
-	mode := gg.ClientModeAny
-	switch artifact.GetterMode {
-	case structs.GetterModeFile:
-		mode = gg.ClientModeFile
-	case structs.GetterModeDir:
-		mode = gg.ClientModeDir
-	}
-
-	if err := getClient(url, mode, dest).Get(); err != nil {
+	if err := getClient(url, dest).Get(); err != nil {
 		return newGetError(url, err, true)
 	}
 

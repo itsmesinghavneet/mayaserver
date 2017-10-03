@@ -4,21 +4,20 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/nomad/command/agent"
+	"github.com/hashicorp/nomad/testutil"
 	"github.com/mitchellh/cli"
 )
 
 func TestClientConfigCommand_Implements(t *testing.T) {
-	t.Parallel()
 	var _ cli.Command = &ClientConfigCommand{}
 }
 
 func TestClientConfigCommand_UpdateServers(t *testing.T) {
-	t.Parallel()
-	srv, _, url := testServer(t, true, func(c *agent.Config) {
+	srv, _, url := testServer(t, func(c *testutil.TestServerConfig) {
+		c.Client.Enabled = true
 		c.Server.BootstrapExpect = 0
 	})
-	defer srv.Shutdown()
+	defer srv.Stop()
 
 	ui := new(cli.MockUi)
 	cmd := &ClientConfigCommand{Meta: Meta{Ui: ui}}
@@ -54,7 +53,6 @@ func TestClientConfigCommand_UpdateServers(t *testing.T) {
 }
 
 func TestClientConfigCommand_Fails(t *testing.T) {
-	t.Parallel()
 	ui := new(cli.MockUi)
 	cmd := &ClientConfigCommand{Meta: Meta{Ui: ui}}
 

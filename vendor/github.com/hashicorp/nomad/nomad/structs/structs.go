@@ -23,7 +23,7 @@ import (
 	"github.com/gorhill/cronexpr"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/go-multierror"
-	version "github.com/hashicorp/go-version"
+	"github.com/hashicorp/go-version"
 	"github.com/hashicorp/nomad/helper"
 	"github.com/hashicorp/nomad/helper/args"
 	"github.com/mitchellh/copystructure"
@@ -53,12 +53,6 @@ const (
 	ReconcileJobSummariesRequestType
 	VaultAccessorRegisterRequestType
 	VaultAccessorDegisterRequestType
-	ApplyPlanResultsRequestType
-	DeploymentStatusUpdateRequestType
-	DeploymentPromoteRequestType
-	DeploymentAllocHealthRequestType
-	DeploymentDeleteRequestType
-	JobStabilityRequestType
 )
 
 const (
@@ -83,23 +77,6 @@ const (
 	ProtocolVersion = "protocol"
 	APIMajorVersion = "api.major"
 	APIMinorVersion = "api.minor"
-
-	GetterModeAny  = "any"
-	GetterModeFile = "file"
-	GetterModeDir  = "dir"
-)
-
-// Context defines the scope in which a search for Nomad object operates, and
-// is also used to query the matching index value for this context
-type Context string
-
-const (
-	Allocs      Context = "allocs"
-	Deployments Context = "deployment"
-	Evals       Context = "evals"
-	Jobs        Context = "jobs"
-	Nodes       Context = "nodes"
-	All         Context = "all"
 )
 
 // RPCInfo is used to describe common information about query
@@ -244,35 +221,6 @@ type NodeSpecificRequest struct {
 	QueryOptions
 }
 
-// SearchResponse is used to return matches and information about whether
-// the match list is truncated specific to each type of context.
-type SearchResponse struct {
-	// Map of context types to ids which match a specified prefix
-	Matches map[Context][]string
-
-	// Truncations indicates whether the matches for a particular context have
-	// been truncated
-	Truncations map[Context]bool
-
-	QueryMeta
-}
-
-// SearchRequest is used to parameterize a request, and returns a
-// list of matches made up of jobs, allocations, evaluations, and/or nodes,
-// along with whether or not the information returned is truncated.
-type SearchRequest struct {
-	// Prefix is what ids are matched to. I.e, if the given prefix were
-	// "a", potential matches might be "abcd" or "aabb"
-	Prefix string
-
-	// Context is the type that can be matched against. A context can be a job,
-	// node, evaluation, allocation, or empty (indicated every context should be
-	// matched)
-	Context Context
-
-	QueryOptions
-}
-
 // JobRegisterRequest is used for Job.Register endpoint
 // to register a job as being a schedulable entity.
 type JobRegisterRequest struct {
@@ -291,12 +239,6 @@ type JobRegisterRequest struct {
 // to deregister a job as being a schedulable entity.
 type JobDeregisterRequest struct {
 	JobID string
-
-	// Purge controls whether the deregister purges the job from the system or
-	// whether the job is just marked as stopped and will be removed by the
-	// garbage collector
-	Purge bool
-
 	WriteRequest
 }
 
@@ -346,35 +288,17 @@ type JobValidateRequest struct {
 	WriteRequest
 }
 
-// JobRevertRequest is used to revert a job to a prior version.
-type JobRevertRequest struct {
-	// JobID is the ID of the job  being reverted
-	JobID string
+// JobValidateResponse is the response from validate request
+type JobValidateResponse struct {
+	// DriverConfigValidated indicates whether the agent validated the driver
+	// config
+	DriverConfigValidated bool
 
-	// JobVersion the version to revert to.
-	JobVersion uint64
+	// ValidationErrors is a list of validation errors
+	ValidationErrors []string
 
-	// EnforcePriorVersion if set will enforce that the job is at the given
-	// version before reverting.
-	EnforcePriorVersion *uint64
-
-	WriteRequest
-}
-
-// JobStabilityRequest is used to marked a job as stable.
-type JobStabilityRequest struct {
-	// Job to set the stability on
-	JobID      string
-	JobVersion uint64
-
-	// Set the stability
-	Stable bool
-	WriteRequest
-}
-
-// JobStabilityResponse is the response when marking a job as stable.
-type JobStabilityResponse struct {
-	WriteMeta
+	// Error is a string version of any error that may have occured
+	Error string
 }
 
 // NodeListRequest is used to parameterize a list request
@@ -426,23 +350,6 @@ type EvalListRequest struct {
 type PlanRequest struct {
 	Plan *Plan
 	WriteRequest
-}
-
-// ApplyPlanResultsRequest is used by the planner to apply a Raft transaction
-// committing the result of a plan.
-type ApplyPlanResultsRequest struct {
-	// AllocUpdateRequest holds the allocation updates to be made by the
-	// scheduler.
-	AllocUpdateRequest
-
-	// Deployment is the deployment created or updated as a result of a
-	// scheduling event.
-	Deployment *Deployment
-
-	// DeploymentUpdates is a set of status updates to apply to the given
-	// deployments. This allows the scheduler to cancel any unneeded deployment
-	// because the job is stopped or the update block is removed.
-	DeploymentUpdates []*DeploymentStatusUpdate
 }
 
 // AllocUpdateRequest is used to submit changes to allocations, either
@@ -538,7 +445,7 @@ type DeriveVaultTokenResponse struct {
 	// Tasks is a mapping between the task name and the wrapped token
 	Tasks map[string]string
 
-	// Error stores any error that occurred. Errors are stored here so we can
+	// Error stores any error that occured. Errors are stored here so we can
 	// communicate whether it is retriable
 	Error *RecoverableError
 
@@ -549,115 +456,6 @@ type DeriveVaultTokenResponse struct {
 // specific information is needed.
 type GenericRequest struct {
 	QueryOptions
-}
-
-// DeploymentListRequest is used to list the deployments
-type DeploymentListRequest struct {
-	QueryOptions
-}
-
-// DeploymentDeleteRequest is used for deleting deployments.
-type DeploymentDeleteRequest struct {
-	Deployments []string
-	WriteRequest
-}
-
-// DeploymentStatusUpdateRequest is used to update the status of a deployment as
-// well as optionally creating an evaluation atomically.
-type DeploymentStatusUpdateRequest struct {
-	// Eval, if set, is used to create an evaluation at the same time as
-	// updating the status of a deployment.
-	Eval *Evaluation
-
-	// DeploymentUpdate is a status update to apply to the given
-	// deployment.
-	DeploymentUpdate *DeploymentStatusUpdate
-
-	// Job is used to optionally upsert a job. This is used when setting the
-	// allocation health results in a deployment failure and the deployment
-	// auto-reverts to the latest stable job.
-	Job *Job
-}
-
-// DeploymentAllocHealthRequest is used to set the health of a set of
-// allocations as part of a deployment.
-type DeploymentAllocHealthRequest struct {
-	DeploymentID string
-
-	// Marks these allocations as healthy, allow further allocations
-	// to be rolled.
-	HealthyAllocationIDs []string
-
-	// Any unhealthy allocations fail the deployment
-	UnhealthyAllocationIDs []string
-
-	WriteRequest
-}
-
-// ApplyDeploymentAllocHealthRequest is used to apply an alloc health request via Raft
-type ApplyDeploymentAllocHealthRequest struct {
-	DeploymentAllocHealthRequest
-
-	// An optional field to update the status of a deployment
-	DeploymentUpdate *DeploymentStatusUpdate
-
-	// Job is used to optionally upsert a job. This is used when setting the
-	// allocation health results in a deployment failure and the deployment
-	// auto-reverts to the latest stable job.
-	Job *Job
-
-	// An optional evaluation to create after promoting the canaries
-	Eval *Evaluation
-}
-
-// DeploymentPromoteRequest is used to promote task groups in a deployment
-type DeploymentPromoteRequest struct {
-	DeploymentID string
-
-	// All is to promote all task groups
-	All bool
-
-	// Groups is used to set the promotion status per task group
-	Groups []string
-
-	WriteRequest
-}
-
-// ApplyDeploymentPromoteRequest is used to apply a promotion request via Raft
-type ApplyDeploymentPromoteRequest struct {
-	DeploymentPromoteRequest
-
-	// An optional evaluation to create after promoting the canaries
-	Eval *Evaluation
-}
-
-// DeploymentPauseRequest is used to pause a deployment
-type DeploymentPauseRequest struct {
-	DeploymentID string
-
-	// Pause sets the pause status
-	Pause bool
-
-	WriteRequest
-}
-
-// DeploymentSpecificRequest is used to make a request specific to a particular
-// deployment
-type DeploymentSpecificRequest struct {
-	DeploymentID string
-	QueryOptions
-}
-
-// DeploymentFailRequest is used to fail a particular deployment
-type DeploymentFailRequest struct {
-	DeploymentID string
-	WriteRequest
-}
-
-// SingleDeploymentResponse is used to respond with a single deployment
-type SingleDeploymentResponse struct {
-	Deployment *Deployment
-	QueryMeta
 }
 
 // GenericResponse is used to respond to a request where no
@@ -678,11 +476,6 @@ type JobRegisterResponse struct {
 	EvalID          string
 	EvalCreateIndex uint64
 	JobModifyIndex  uint64
-
-	// Warnings contains any warnings about the given job. These may include
-	// deprecation warnings.
-	Warnings string
-
 	QueryMeta
 }
 
@@ -692,23 +485,6 @@ type JobDeregisterResponse struct {
 	EvalCreateIndex uint64
 	JobModifyIndex  uint64
 	QueryMeta
-}
-
-// JobValidateResponse is the response from validate request
-type JobValidateResponse struct {
-	// DriverConfigValidated indicates whether the agent validated the driver
-	// config
-	DriverConfigValidated bool
-
-	// ValidationErrors is a list of validation errors
-	ValidationErrors []string
-
-	// Error is a string version of any error that may have occurred
-	Error string
-
-	// Warnings contains any warnings about the given job. These may include
-	// deprecation warnings.
-	Warnings string
 }
 
 // NodeUpdateResponse is used to respond to a node update
@@ -760,7 +536,7 @@ type SingleNodeResponse struct {
 	QueryMeta
 }
 
-// NodeListResponse is used for a list request
+// JobListResponse is used for a list request
 type NodeListResponse struct {
 	Nodes []*NodeListStub
 	QueryMeta
@@ -792,20 +568,6 @@ type JobListResponse struct {
 	QueryMeta
 }
 
-// JobVersionsRequest is used to get a jobs versions
-type JobVersionsRequest struct {
-	JobID string
-	Diffs bool
-	QueryOptions
-}
-
-// JobVersionsResponse is used for a job get versions request
-type JobVersionsResponse struct {
-	Versions []*Job
-	Diffs    []*JobDiff
-	QueryMeta
-}
-
 // JobPlanResponse is used to respond to a job plan request
 type JobPlanResponse struct {
 	// Annotations stores annotations explaining decisions the scheduler made.
@@ -830,10 +592,6 @@ type JobPlanResponse struct {
 	// NextPeriodicLaunch is the time duration till the job would be launched if
 	// submitted.
 	NextPeriodicLaunch time.Time
-
-	// Warnings contains any warnings about the given job. These may include
-	// deprecation warnings.
-	Warnings string
 
 	WriteMeta
 }
@@ -887,12 +645,6 @@ type AllocListResponse struct {
 	QueryMeta
 }
 
-// DeploymentListResponse is used for a list request
-type DeploymentListResponse struct {
-	Deployments []*Deployment
-	QueryMeta
-}
-
 // EvalListResponse is used for a list request
 type EvalListResponse struct {
 	Evaluations []*Evaluation
@@ -909,21 +661,6 @@ type EvalAllocationsResponse struct {
 type PeriodicForceResponse struct {
 	EvalID          string
 	EvalCreateIndex uint64
-	WriteMeta
-}
-
-// DeploymentUpdateResponse is used to respond to a deployment change. The
-// response will include the modify index of the deployment as well as details
-// of any triggered evaluation.
-type DeploymentUpdateResponse struct {
-	EvalID                string
-	EvalCreateIndex       uint64
-	DeploymentModifyIndex uint64
-
-	// RevertedJobVersion is the version the job was reverted to. If unset, the
-	// job wasn't reverted
-	RevertedJobVersion *uint64
-
 	WriteMeta
 }
 
@@ -1072,7 +809,6 @@ func (n *Node) Stub() *NodeListStub {
 		Datacenter:        n.Datacenter,
 		Name:              n.Name,
 		NodeClass:         n.NodeClass,
-		Version:           n.Attributes["nomad.version"],
 		Drain:             n.Drain,
 		Status:            n.Status,
 		StatusDescription: n.StatusDescription,
@@ -1088,32 +824,11 @@ type NodeListStub struct {
 	Datacenter        string
 	Name              string
 	NodeClass         string
-	Version           string
 	Drain             bool
 	Status            string
 	StatusDescription string
 	CreateIndex       uint64
 	ModifyIndex       uint64
-}
-
-// Networks defined for a task on the Resources struct.
-type Networks []*NetworkResource
-
-// Port assignment and IP for the given label or empty values.
-func (ns Networks) Port(label string) (string, int) {
-	for _, n := range ns {
-		for _, p := range n.ReservedPorts {
-			if p.Label == label {
-				return n.IP, p.Value
-			}
-		}
-		for _, p := range n.DynamicPorts {
-			if p.Label == label {
-				return n.IP, p.Value
-			}
-		}
-	}
-	return "", 0
 }
 
 // Resources is used to define the resources available
@@ -1123,7 +838,7 @@ type Resources struct {
 	MemoryMB int
 	DiskMB   int
 	IOPS     int
-	Networks Networks
+	Networks []*NetworkResource
 }
 
 const (
@@ -1280,10 +995,10 @@ type Port struct {
 type NetworkResource struct {
 	Device        string // Name of the device
 	CIDR          string // CIDR block of addresses
-	IP            string // Host IP address
+	IP            string // IP address
 	MBits         int    // Throughput
-	ReservedPorts []Port // Host Reserved ports
-	DynamicPorts  []Port // Host Dynamically assigned ports
+	ReservedPorts []Port // Reserved ports
+	DynamicPorts  []Port // Dynamically assigned ports
 }
 
 func (n *NetworkResource) Canonicalize() {
@@ -1339,15 +1054,15 @@ func (n *NetworkResource) GoString() string {
 	return fmt.Sprintf("*%#v", *n)
 }
 
-// PortLabels returns a map of port labels to their assigned host ports.
-func (n *NetworkResource) PortLabels() map[string]int {
-	num := len(n.ReservedPorts) + len(n.DynamicPorts)
-	labelValues := make(map[string]int, num)
-	for _, port := range n.ReservedPorts {
-		labelValues[port.Label] = port.Value
-	}
-	for _, port := range n.DynamicPorts {
-		labelValues[port.Label] = port.Value
+func (n *NetworkResource) MapLabelToValues(port_map map[string]int) map[string]int {
+	labelValues := make(map[string]int)
+	ports := append(n.ReservedPorts, n.DynamicPorts...)
+	for _, port := range ports {
+		if mapping, ok := port_map[port.Label]; ok {
+			labelValues[port.Label] = mapping
+		} else {
+			labelValues[port.Label] = port.Value
+		}
 	}
 	return labelValues
 }
@@ -1382,10 +1097,6 @@ const (
 	// specified job so that it gets priority. This is important
 	// for the system to remain healthy.
 	CoreJobPriority = JobMaxPriority * 2
-
-	// JobTrackedVersions is the number of historic job versions that are
-	// kept.
-	JobTrackedVersions = 6
 )
 
 // Job is the scope of a scheduling request to Nomad. It is the largest
@@ -1393,12 +1104,6 @@ const (
 // is further composed of tasks. A task group (TG) is the unit of scheduling
 // however.
 type Job struct {
-	// Stop marks whether the user has stopped the job. A stopped job will
-	// have all created allocations stopped and acts as a way to stop a job
-	// without purging it from the system. This allows existing allocs to be
-	// queried and the job to be inspected as it is being killed.
-	Stop bool
-
 	// Region is the Nomad region that handles scheduling this job
 	Region string
 
@@ -1439,7 +1144,7 @@ type Job struct {
 	// to run. Each task group is an atomic unit of scheduling and placement.
 	TaskGroups []*TaskGroup
 
-	// COMPAT: Remove in 0.7.0. Stagger is deprecated in 0.6.0.
+	// Update is used to control the update strategy
 	Update UpdateStrategy
 
 	// Periodic is used to define the interval the job is run at.
@@ -1467,19 +1172,6 @@ type Job struct {
 	// StatusDescription is meant to provide more human useful information
 	StatusDescription string
 
-	// Stable marks a job as stable. Stability is only defined on "service" and
-	// "system" jobs. The stability of a job will be set automatically as part
-	// of a deployment and can be manually set via APIs.
-	Stable bool
-
-	// Version is a monitonically increasing version number that is incremened
-	// on each job register.
-	Version uint64
-
-	// SubmitTime is the time at which the job was submitted as a UnixNano in
-	// UTC
-	SubmitTime int64
-
 	// Raft Indexes
 	CreateIndex    uint64
 	ModifyIndex    uint64
@@ -1487,10 +1179,8 @@ type Job struct {
 }
 
 // Canonicalize is used to canonicalize fields in the Job. This should be called
-// when registering a Job. A set of warnings are returned if the job was changed
-// in anyway that the user should be made aware of.
-func (j *Job) Canonicalize() (warnings error) {
-	var mErr multierror.Error
+// when registering a Job.
+func (j *Job) Canonicalize() {
 	// Ensure that an empty and nil map are treated the same to avoid scheduling
 	// problems since we use reflect DeepEquals.
 	if len(j.Meta) == 0 {
@@ -1508,87 +1198,6 @@ func (j *Job) Canonicalize() (warnings error) {
 	if j.Periodic != nil {
 		j.Periodic.Canonicalize()
 	}
-
-	// COMPAT: Remove in 0.7.0
-	// Rewrite any job that has an update block with pre 0.6.0 syntax.
-	jobHasOldUpdate := j.Update.Stagger > 0 && j.Update.MaxParallel > 0
-	if jobHasOldUpdate && j.Type != JobTypeBatch {
-		// Build an appropriate update block and copy it down to each task group
-		base := DefaultUpdateStrategy.Copy()
-		base.MaxParallel = j.Update.MaxParallel
-		base.MinHealthyTime = j.Update.Stagger
-
-		// Add to each task group, modifying as needed
-		upgraded := false
-		l := len(j.TaskGroups)
-		for _, tg := range j.TaskGroups {
-			// The task group doesn't need upgrading if it has an update block with the new syntax
-			u := tg.Update
-			if u != nil && u.Stagger > 0 && u.MaxParallel > 0 &&
-				u.HealthCheck != "" && u.MinHealthyTime > 0 && u.HealthyDeadline > 0 {
-				continue
-			}
-
-			upgraded = true
-
-			// The MaxParallel for the job should be 10% of the total count
-			// unless there is just one task group then we can infer the old
-			// max parallel should be the new
-			tgu := base.Copy()
-			if l != 1 {
-				// RoundTo 10%
-				var percent float64 = float64(tg.Count) * 0.1
-				tgu.MaxParallel = int(percent + 0.5)
-			}
-
-			// Safety guards
-			if tgu.MaxParallel == 0 {
-				tgu.MaxParallel = 1
-			} else if tgu.MaxParallel > tg.Count {
-				tgu.MaxParallel = tg.Count
-			}
-
-			tg.Update = tgu
-		}
-
-		if upgraded {
-			w := "A best effort conversion to new update stanza introduced in v0.6.0 applied. " +
-				"Please update upgrade stanza before v0.7.0."
-			multierror.Append(&mErr, fmt.Errorf(w))
-		}
-	}
-
-	// Ensure that the batch job doesn't have new style or old style update
-	// stanza. Unfortunately are scanning here because we have to deprecate over
-	// a release so we can't check in the task group since that may be new style
-	// but wouldn't capture the old style and we don't want to have duplicate
-	// warnings.
-	if j.Type == JobTypeBatch {
-		displayWarning := jobHasOldUpdate
-		j.Update.Stagger = 0
-		j.Update.MaxParallel = 0
-		j.Update.HealthCheck = ""
-		j.Update.MinHealthyTime = 0
-		j.Update.HealthyDeadline = 0
-		j.Update.AutoRevert = false
-		j.Update.Canary = 0
-
-		// Remove any update spec from the task groups
-		for _, tg := range j.TaskGroups {
-			if tg.Update != nil {
-				displayWarning = true
-				tg.Update = nil
-			}
-		}
-
-		if displayWarning {
-			w := "Update stanza is disallowed for batch jobs since v0.6.0. " +
-				"The update block has automatically been removed"
-			multierror.Append(&mErr, fmt.Errorf(w))
-		}
-	}
-
-	return mErr.ErrorOrNil()
 }
 
 // Copy returns a deep copy of the Job. It is expected that callers use recover.
@@ -1631,12 +1240,8 @@ func (j *Job) Validate() error {
 	if j.Name == "" {
 		mErr.Errors = append(mErr.Errors, errors.New("Missing job name"))
 	}
-	switch j.Type {
-	case JobTypeCore, JobTypeService, JobTypeBatch, JobTypeSystem:
-	case "":
+	if j.Type == "" {
 		mErr.Errors = append(mErr.Errors, errors.New("Missing job type"))
-	default:
-		mErr.Errors = append(mErr.Errors, fmt.Errorf("Invalid job type: %q", j.Type))
 	}
 	if j.Priority < JobMinPriority || j.Priority > JobMaxPriority {
 		mErr.Errors = append(mErr.Errors, fmt.Errorf("Job priority must be between [%d, %d]", JobMinPriority, JobMaxPriority))
@@ -1674,7 +1279,7 @@ func (j *Job) Validate() error {
 
 	// Validate the task group
 	for _, tg := range j.TaskGroups {
-		if err := tg.Validate(j); err != nil {
+		if err := tg.Validate(); err != nil {
 			outer := fmt.Errorf("Task group %s validation failed: %v", tg.Name, err)
 			mErr.Errors = append(mErr.Errors, outer)
 		}
@@ -1700,22 +1305,6 @@ func (j *Job) Validate() error {
 
 		if err := j.ParameterizedJob.Validate(); err != nil {
 			mErr.Errors = append(mErr.Errors, err)
-		}
-	}
-
-	return mErr.ErrorOrNil()
-}
-
-// Warnings returns a list of warnings that may be from dubious settings or
-// deprecation warnings.
-func (j *Job) Warnings() error {
-	var mErr multierror.Error
-
-	// Check the groups
-	for _, tg := range j.TaskGroups {
-		if err := tg.Warnings(j); err != nil {
-			outer := fmt.Errorf("Group %q has warnings: %v", tg.Name, err)
-			mErr.Errors = append(mErr.Errors, outer)
 		}
 	}
 
@@ -1768,22 +1357,6 @@ func (j *Job) CombinedTaskMeta(groupName, taskName string) map[string]string {
 	return meta
 }
 
-// Stopped returns if a job is stopped.
-func (j *Job) Stopped() bool {
-	return j == nil || j.Stop
-}
-
-// HasUpdateStrategy returns if any task group in the job has an update strategy
-func (j *Job) HasUpdateStrategy() bool {
-	for _, tg := range j.TaskGroups {
-		if tg.Update != nil {
-			return true
-		}
-	}
-
-	return false
-}
-
 // Stub is used to return a summary of the job
 func (j *Job) Stub(summary *JobSummary) *JobListStub {
 	return &JobListStub{
@@ -1792,15 +1365,11 @@ func (j *Job) Stub(summary *JobSummary) *JobListStub {
 		Name:              j.Name,
 		Type:              j.Type,
 		Priority:          j.Priority,
-		Periodic:          j.IsPeriodic(),
-		ParameterizedJob:  j.IsParameterized(),
-		Stop:              j.Stop,
 		Status:            j.Status,
 		StatusDescription: j.StatusDescription,
 		CreateIndex:       j.CreateIndex,
 		ModifyIndex:       j.ModifyIndex,
 		JobModifyIndex:    j.JobModifyIndex,
-		SubmitTime:        j.SubmitTime,
 		JobSummary:        summary,
 	}
 }
@@ -1887,34 +1456,6 @@ func (j *Job) RequiredSignals() map[string]map[string][]string {
 	return signals
 }
 
-// SpecChanged determines if the functional specification has changed between
-// two job versions.
-func (j *Job) SpecChanged(new *Job) bool {
-	if j == nil {
-		return new != nil
-	}
-
-	// Create a copy of the new job
-	c := new.Copy()
-
-	// Update the new job so we can do a reflect
-	c.Status = j.Status
-	c.StatusDescription = j.StatusDescription
-	c.Stable = j.Stable
-	c.Version = j.Version
-	c.CreateIndex = j.CreateIndex
-	c.ModifyIndex = j.ModifyIndex
-	c.JobModifyIndex = j.JobModifyIndex
-	c.SubmitTime = j.SubmitTime
-
-	// Deep equals the jobs
-	return !reflect.DeepEqual(j, c)
-}
-
-func (j *Job) SetSubmitTime() {
-	j.SubmitTime = time.Now().UTC().UnixNano()
-}
-
 // JobListStub is used to return a subset of job information
 // for the job list
 type JobListStub struct {
@@ -1923,16 +1464,12 @@ type JobListStub struct {
 	Name              string
 	Type              string
 	Priority          int
-	Periodic          bool
-	ParameterizedJob  bool
-	Stop              bool
 	Status            string
 	StatusDescription string
 	JobSummary        *JobSummary
 	CreateIndex       uint64
 	ModifyIndex       uint64
 	JobModifyIndex    uint64
-	SubmitTime        int64
 }
 
 // JobSummary summarizes the state of the allocations of a job
@@ -1992,113 +1529,15 @@ type TaskGroupSummary struct {
 	Lost     int
 }
 
-const (
-	// Checks uses any registered health check state in combination with task
-	// states to determine if a allocation is healthy.
-	UpdateStrategyHealthCheck_Checks = "checks"
-
-	// TaskStates uses the task states of an allocation to determine if the
-	// allocation is healthy.
-	UpdateStrategyHealthCheck_TaskStates = "task_states"
-
-	// Manual allows the operator to manually signal to Nomad when an
-	// allocations is healthy. This allows more advanced health checking that is
-	// outside of the scope of Nomad.
-	UpdateStrategyHealthCheck_Manual = "manual"
-)
-
-var (
-	// DefaultUpdateStrategy provides a baseline that can be used to upgrade
-	// jobs with the old policy or for populating field defaults.
-	DefaultUpdateStrategy = &UpdateStrategy{
-		Stagger:         30 * time.Second,
-		MaxParallel:     1,
-		HealthCheck:     UpdateStrategyHealthCheck_Checks,
-		MinHealthyTime:  10 * time.Second,
-		HealthyDeadline: 5 * time.Minute,
-		AutoRevert:      false,
-		Canary:          0,
-	}
-)
-
 // UpdateStrategy is used to modify how updates are done
 type UpdateStrategy struct {
-	// Stagger is used to determine the rate at which allocations are migrated
-	// due to down or draining nodes.
+	// Stagger is the amount of time between the updates
 	Stagger time.Duration
 
 	// MaxParallel is how many updates can be done in parallel
 	MaxParallel int
-
-	// HealthCheck specifies the mechanism in which allocations are marked
-	// healthy or unhealthy as part of a deployment.
-	HealthCheck string
-
-	// MinHealthyTime is the minimum time an allocation must be in the healthy
-	// state before it is marked as healthy, unblocking more alllocations to be
-	// rolled.
-	MinHealthyTime time.Duration
-
-	// HealthyDeadline is the time in which an allocation must be marked as
-	// healthy before it is automatically transistioned to unhealthy. This time
-	// period doesn't count against the MinHealthyTime.
-	HealthyDeadline time.Duration
-
-	// AutoRevert declares that if a deployment fails because of unhealthy
-	// allocations, there should be an attempt to auto-revert the job to a
-	// stable version.
-	AutoRevert bool
-
-	// Canary is the number of canaries to deploy when a change to the task
-	// group is detected.
-	Canary int
 }
 
-func (u *UpdateStrategy) Copy() *UpdateStrategy {
-	if u == nil {
-		return nil
-	}
-
-	copy := new(UpdateStrategy)
-	*copy = *u
-	return copy
-}
-
-func (u *UpdateStrategy) Validate() error {
-	if u == nil {
-		return nil
-	}
-
-	var mErr multierror.Error
-	switch u.HealthCheck {
-	case UpdateStrategyHealthCheck_Checks, UpdateStrategyHealthCheck_TaskStates, UpdateStrategyHealthCheck_Manual:
-	default:
-		multierror.Append(&mErr, fmt.Errorf("Invalid health check given: %q", u.HealthCheck))
-	}
-
-	if u.MaxParallel < 1 {
-		multierror.Append(&mErr, fmt.Errorf("Max parallel can not be less than one: %d < 1", u.MaxParallel))
-	}
-	if u.Canary < 0 {
-		multierror.Append(&mErr, fmt.Errorf("Canary count can not be less than zero: %d < 0", u.Canary))
-	}
-	if u.MinHealthyTime < 0 {
-		multierror.Append(&mErr, fmt.Errorf("Minimum healthy time may not be less than zero: %v", u.MinHealthyTime))
-	}
-	if u.HealthyDeadline <= 0 {
-		multierror.Append(&mErr, fmt.Errorf("Healthy deadline must be greater than zero: %v", u.HealthyDeadline))
-	}
-	if u.MinHealthyTime >= u.HealthyDeadline {
-		multierror.Append(&mErr, fmt.Errorf("Minimum healthy time must be less than healthy deadline: %v > %v", u.MinHealthyTime, u.HealthyDeadline))
-	}
-	if u.Stagger <= 0 {
-		multierror.Append(&mErr, fmt.Errorf("Stagger must be greater than zero: %v", u.Stagger))
-	}
-
-	return mErr.ErrorOrNil()
-}
-
-// TODO(alexdadgar): Remove once no longer used by the scheduler.
 // Rolling returns if a rolling strategy should be used
 func (u *UpdateStrategy) Rolling() bool {
 	return u.Stagger > 0 && u.MaxParallel > 0
@@ -2446,9 +1885,6 @@ type TaskGroup struct {
 	// be scheduled.
 	Count int
 
-	// Update is used to control the update strategy for this task group
-	Update *UpdateStrategy
-
 	// Constraints can be specified at a task group level and apply to
 	// all the tasks contained.
 	Constraints []*Constraint
@@ -2473,8 +1909,8 @@ func (tg *TaskGroup) Copy() *TaskGroup {
 	}
 	ntg := new(TaskGroup)
 	*ntg = *tg
-	ntg.Update = ntg.Update.Copy()
 	ntg.Constraints = CopySliceConstraints(ntg.Constraints)
+
 	ntg.RestartPolicy = ntg.RestartPolicy.Copy()
 
 	if tg.Tasks != nil {
@@ -2530,7 +1966,7 @@ func (tg *TaskGroup) Canonicalize(job *Job) {
 }
 
 // Validate is used to sanity check a task group
-func (tg *TaskGroup) Validate(j *Job) error {
+func (tg *TaskGroup) Validate() error {
 	var mErr multierror.Error
 	if tg.Name == "" {
 		mErr.Errors = append(mErr.Errors, errors.New("Missing task group name"))
@@ -2564,23 +2000,8 @@ func (tg *TaskGroup) Validate(j *Job) error {
 		mErr.Errors = append(mErr.Errors, fmt.Errorf("Task Group %v should have an ephemeral disk object", tg.Name))
 	}
 
-	// Validate the update strategy
-	if u := tg.Update; u != nil {
-		switch j.Type {
-		case JobTypeService, JobTypeSystem:
-		default:
-			// COMPAT: Enable in 0.7.0
-			//mErr.Errors = append(mErr.Errors, fmt.Errorf("Job type %q does not allow update block", j.Type))
-		}
-		if err := u.Validate(); err != nil {
-			mErr.Errors = append(mErr.Errors, err)
-		}
-	}
-
-	// Check for duplicate tasks, that there is only leader task if any,
-	// and no duplicated static ports
+	// Check for duplicate tasks and that there is only leader task if any
 	tasks := make(map[string]int)
-	staticPorts := make(map[int]string)
 	leaderTasks := 0
 	for idx, task := range tg.Tasks {
 		if task.Name == "" {
@@ -2593,21 +2014,6 @@ func (tg *TaskGroup) Validate(j *Job) error {
 
 		if task.Leader {
 			leaderTasks++
-		}
-
-		if task.Resources == nil {
-			continue
-		}
-
-		for _, net := range task.Resources.Networks {
-			for _, port := range net.ReservedPorts {
-				if other, ok := staticPorts[port.Value]; ok {
-					err := fmt.Errorf("Static port %d already reserved by %s", port.Value, other)
-					mErr.Errors = append(mErr.Errors, err)
-				} else {
-					staticPorts[port.Value] = fmt.Sprintf("%s:%s", task.Name, port.Label)
-				}
-			}
 		}
 	}
 
@@ -2622,24 +2028,6 @@ func (tg *TaskGroup) Validate(j *Job) error {
 			mErr.Errors = append(mErr.Errors, outer)
 		}
 	}
-	return mErr.ErrorOrNil()
-}
-
-// Warnings returns a list of warnings that may be from dubious settings or
-// deprecation warnings.
-func (tg *TaskGroup) Warnings(j *Job) error {
-	var mErr multierror.Error
-
-	// Validate the update strategy
-	if u := tg.Update; u != nil {
-		// Check the counts are appropriate
-		if u.MaxParallel > tg.Count {
-			mErr.Errors = append(mErr.Errors,
-				fmt.Errorf("Update max parallel count is greater than task group count (%d > %d). "+
-					"A destructive change would result in the simultaneous replacement of all allocations.", u.MaxParallel, tg.Count))
-		}
-	}
-
 	return mErr.ErrorOrNil()
 }
 
@@ -2658,6 +2046,7 @@ func (tg *TaskGroup) GoString() string {
 }
 
 const (
+	// TODO add Consul TTL check
 	ServiceCheckHTTP   = "http"
 	ServiceCheckTCP    = "tcp"
 	ServiceCheckScript = "script"
@@ -2675,19 +2064,16 @@ const (
 // The ServiceCheck data model represents the consul health check that
 // Nomad registers for a Task
 type ServiceCheck struct {
-	Name          string              // Name of the check, defaults to id
-	Type          string              // Type of the check - tcp, http, docker and script
-	Command       string              // Command is the command to run for script checks
-	Args          []string            // Args is a list of argumes for script checks
-	Path          string              // path of the health check url for http type check
-	Protocol      string              // Protocol to use if check is http, defaults to http
-	PortLabel     string              // The port to use for tcp/http checks
-	Interval      time.Duration       // Interval of the check
-	Timeout       time.Duration       // Timeout of the response from the check before consul fails the check
-	InitialStatus string              // Initial status of the check
-	TLSSkipVerify bool                // Skip TLS verification when Protocol=https
-	Method        string              // HTTP Method to use (GET by default)
-	Header        map[string][]string // HTTP Headers for Consul to set when making HTTP checks
+	Name          string        // Name of the check, defaults to id
+	Type          string        // Type of the check - tcp, http, docker and script
+	Command       string        // Command is the command to run for script checks
+	Args          []string      // Args is a list of argumes for script checks
+	Path          string        // path of the health check url for http type check
+	Protocol      string        // Protocol to use if check is http, defaults to http
+	PortLabel     string        // The port to use for tcp/http checks
+	Interval      time.Duration // Interval of the check
+	Timeout       time.Duration // Timeout of the response from the check before consul fails the check
+	InitialStatus string        // Initial status of the check
 }
 
 func (sc *ServiceCheck) Copy() *ServiceCheck {
@@ -2696,26 +2082,14 @@ func (sc *ServiceCheck) Copy() *ServiceCheck {
 	}
 	nsc := new(ServiceCheck)
 	*nsc = *sc
-	nsc.Args = helper.CopySliceString(sc.Args)
-	nsc.Header = helper.CopyMapStringSliceString(sc.Header)
 	return nsc
 }
 
 func (sc *ServiceCheck) Canonicalize(serviceName string) {
-	// Ensure empty maps/slices are treated as null to avoid scheduling
-	// issues when using DeepEquals.
+	// Ensure empty slices are treated as null to avoid scheduling issues when
+	// using DeepEquals.
 	if len(sc.Args) == 0 {
 		sc.Args = nil
-	}
-
-	if len(sc.Header) == 0 {
-		sc.Header = nil
-	} else {
-		for k, v := range sc.Header {
-			if len(v) == 0 {
-				sc.Header[k] = nil
-			}
-		}
 	}
 
 	if sc.Name == "" {
@@ -2727,15 +2101,28 @@ func (sc *ServiceCheck) Canonicalize(serviceName string) {
 func (sc *ServiceCheck) validate() error {
 	switch strings.ToLower(sc.Type) {
 	case ServiceCheckTCP:
+		if sc.Timeout == 0 {
+			return fmt.Errorf("missing required value timeout. Timeout cannot be less than %v", minCheckInterval)
+		} else if sc.Timeout < minCheckTimeout {
+			return fmt.Errorf("timeout (%v) is lower than required minimum timeout %v", sc.Timeout, minCheckInterval)
+		}
 	case ServiceCheckHTTP:
 		if sc.Path == "" {
 			return fmt.Errorf("http type must have a valid http path")
 		}
 
+		if sc.Timeout == 0 {
+			return fmt.Errorf("missing required value timeout. Timeout cannot be less than %v", minCheckInterval)
+		} else if sc.Timeout < minCheckTimeout {
+			return fmt.Errorf("timeout (%v) is lower than required minimum timeout %v", sc.Timeout, minCheckInterval)
+		}
 	case ServiceCheckScript:
 		if sc.Command == "" {
 			return fmt.Errorf("script type must have a valid script path")
 		}
+
+		// TODO: enforce timeout on the Client side and reenable
+		// validation.
 	default:
 		return fmt.Errorf(`invalid type (%+q), must be one of "http", "tcp", or "script" type`, sc.Type)
 	}
@@ -2744,12 +2131,6 @@ func (sc *ServiceCheck) validate() error {
 		return fmt.Errorf("missing required value interval. Interval cannot be less than %v", minCheckInterval)
 	} else if sc.Interval < minCheckInterval {
 		return fmt.Errorf("interval (%v) cannot be lower than %v", sc.Interval, minCheckInterval)
-	}
-
-	if sc.Timeout == 0 {
-		return fmt.Errorf("missing required value timeout. Timeout cannot be less than %v", minCheckInterval)
-	} else if sc.Timeout < minCheckTimeout {
-		return fmt.Errorf("timeout (%v) is lower than required minimum timeout %v", sc.Timeout, minCheckInterval)
 	}
 
 	switch sc.InitialStatus {
@@ -2776,10 +2157,6 @@ func (sc *ServiceCheck) RequiresPort() bool {
 	}
 }
 
-// Hash all ServiceCheck fields and the check's corresponding service ID to
-// create an identifier. The identifier is not guaranteed to be unique as if
-// the PortLabel is blank, the Service's PortLabel will be used after Hash is
-// called.
 func (sc *ServiceCheck) Hash(serviceID string) string {
 	h := sha1.New()
 	io.WriteString(h, serviceID)
@@ -2792,31 +2169,8 @@ func (sc *ServiceCheck) Hash(serviceID string) string {
 	io.WriteString(h, sc.PortLabel)
 	io.WriteString(h, sc.Interval.String())
 	io.WriteString(h, sc.Timeout.String())
-	io.WriteString(h, sc.Method)
-	// Only include TLSSkipVerify if set to maintain ID stability with Nomad <0.6
-	if sc.TLSSkipVerify {
-		io.WriteString(h, "true")
-	}
-
-	// Since map iteration order isn't stable we need to write k/v pairs to
-	// a slice and sort it before hashing.
-	if len(sc.Header) > 0 {
-		headers := make([]string, 0, len(sc.Header))
-		for k, v := range sc.Header {
-			headers = append(headers, k+strings.Join(v, ""))
-		}
-		sort.Strings(headers)
-		io.WriteString(h, strings.Join(headers, ""))
-	}
-
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
-
-const (
-	AddressModeAuto   = "auto"
-	AddressModeHost   = "host"
-	AddressModeDriver = "driver"
-)
 
 // Service represents a Consul service definition in Nomad
 type Service struct {
@@ -2829,13 +2183,8 @@ type Service struct {
 	// To specify the port number using the host's Consul Advertise
 	// address, specify an empty host in the PortLabel (e.g. `:port`).
 	PortLabel string
-
-	// AddressMode specifies whether or not to use the host ip:port for
-	// this service.
-	AddressMode string
-
-	Tags   []string        // List of tags for the service
-	Checks []*ServiceCheck // List of checks associated with the service
+	Tags      []string        // List of tags for the service
+	Checks    []*ServiceCheck // List of checks associated with the service
 }
 
 func (s *Service) Copy() *Service {
@@ -2896,13 +2245,6 @@ func (s *Service) Validate() error {
 		mErr.Errors = append(mErr.Errors, fmt.Errorf("service name must be valid per RFC 1123 and can contain only alphanumeric characters or dashes: %q", s.Name))
 	}
 
-	switch s.AddressMode {
-	case "", AddressModeAuto, AddressModeHost, AddressModeDriver:
-		// OK
-	default:
-		mErr.Errors = append(mErr.Errors, fmt.Errorf("service address_mode must be %q, %q, or %q; not %q", AddressModeAuto, AddressModeHost, AddressModeDriver, s.AddressMode))
-	}
-
 	for _, c := range s.Checks {
 		if s.PortLabel == "" && c.RequiresPort() {
 			mErr.Errors = append(mErr.Errors, fmt.Errorf("check %s invalid: check requires a port but the service %+q has no port", c.Name, s.Name))
@@ -2937,7 +2279,6 @@ func (s *Service) Hash() string {
 	io.WriteString(h, s.Name)
 	io.WriteString(h, strings.Join(s.Tags, ""))
 	io.WriteString(h, s.PortLabel)
-	io.WriteString(h, s.AddressMode)
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
@@ -3030,10 +2371,6 @@ type Task struct {
 	// Leader marks the task as the leader within the group. When the leader
 	// task exits, other tasks will be gracefully terminated.
 	Leader bool
-
-	// ShutdownDelay is the duration of the delay between deregistering a
-	// task from Consul and sending it a signal to shutdown. See #2441
-	ShutdownDelay time.Duration
 }
 
 func (t *Task) Copy() *Task {
@@ -3068,8 +2405,6 @@ func (t *Task) Copy() *Task {
 	}
 
 	if i, err := copystructure.Copy(nt.Config); err != nil {
-		panic(err.Error())
-	} else {
 		nt.Config = i.(map[string]interface{})
 	}
 
@@ -3127,6 +2462,15 @@ func (t *Task) GoString() string {
 	return fmt.Sprintf("*%#v", *t)
 }
 
+func (t *Task) FindHostAndPortFor(portLabel string) (string, int) {
+	for _, network := range t.Resources.Networks {
+		if p, ok := network.MapLabelToValues(nil)[portLabel]; ok {
+			return network.IP, p
+		}
+	}
+	return "", 0
+}
+
 // Validate is used to sanity check a task
 func (t *Task) Validate(ephemeralDisk *EphemeralDisk) error {
 	var mErr multierror.Error
@@ -3141,11 +2485,8 @@ func (t *Task) Validate(ephemeralDisk *EphemeralDisk) error {
 	if t.Driver == "" {
 		mErr.Errors = append(mErr.Errors, errors.New("Missing task driver"))
 	}
-	if t.KillTimeout < 0 {
+	if t.KillTimeout.Nanoseconds() < 0 {
 		mErr.Errors = append(mErr.Errors, errors.New("KillTimeout must be a positive value"))
-	}
-	if t.ShutdownDelay < 0 {
-		mErr.Errors = append(mErr.Errors, errors.New("ShutdownDelay must be a positive value"))
 	}
 
 	// Validate the resources.
@@ -3274,7 +2615,7 @@ func validateServices(t *Task) error {
 	portLabels := make(map[string]struct{})
 	if t.Resources != nil {
 		for _, network := range t.Resources.Networks {
-			ports := network.PortLabels()
+			ports := network.MapLabelToValues(nil)
 			for portLabel, _ := range ports {
 				portLabels[portLabel] = struct{}{}
 			}
@@ -3290,8 +2631,6 @@ func validateServices(t *Task) error {
 			mErr.Errors = append(mErr.Errors, err)
 		}
 	}
-
-	// Ensure address mode is valid
 	return mErr.ErrorOrNil()
 }
 
@@ -3346,23 +2685,6 @@ type Template struct {
 	// delimiter is utilized when parsing the template.
 	LeftDelim  string
 	RightDelim string
-
-	// Envvars enables exposing the template as environment variables
-	// instead of as a file. The template must be of the form:
-	//
-	//	VAR_NAME_1={{ key service/my-key }}
-	//	VAR_NAME_2=raw string and {{ env "attr.kernel.name" }}
-	//
-	// Lines will be split on the initial "=" with the first part being the
-	// key name and the second part the value.
-	// Empty lines and lines starting with # will be ignored, but to avoid
-	// escaping issues #s within lines will not be treated as comments.
-	Envvars bool
-
-	// VaultGrace is the grace duration between lease renewal and reacquiring a
-	// secret. If the lease of a secret is less than the grace, a new secret is
-	// acquired.
-	VaultGrace time.Duration
 }
 
 // DefaultTemplate returns a default template.
@@ -3417,9 +2739,6 @@ func (t *Template) Validate() error {
 		if t.ChangeSignal == "" {
 			multierror.Append(&mErr, fmt.Errorf("Must specify signal value when change mode is signal"))
 		}
-		if t.Envvars {
-			multierror.Append(&mErr, fmt.Errorf("cannot use signals with env var templates"))
-		}
 	default:
 		multierror.Append(&mErr, TemplateChangeModeInvalidError)
 	}
@@ -3434,10 +2753,6 @@ func (t *Template) Validate() error {
 		if _, err := strconv.ParseUint(t.Perms, 8, 12); err != nil {
 			multierror.Append(&mErr, fmt.Errorf("Failed to parse %q as octal: %v", t.Perms, err))
 		}
-	}
-
-	if t.VaultGrace.Nanoseconds() < 0 {
-		multierror.Append(&mErr, fmt.Errorf("Vault grace must be greater than zero: %v < 0", t.VaultGrace))
 	}
 
 	return mErr.ErrorOrNil()
@@ -3459,13 +2774,6 @@ type TaskState struct {
 	// Failed marks a task as having failed
 	Failed bool
 
-	// Restarts is the number of times the task has restarted
-	Restarts uint64
-
-	// LastRestart is the time the task last restarted. It is updated each time the
-	// task restarts
-	LastRestart time.Time
-
 	// StartedAt is the time the task is started. It is updated each time the
 	// task starts
 	StartedAt time.Time
@@ -3483,7 +2791,10 @@ func (ts *TaskState) Copy() *TaskState {
 		return nil
 	}
 	copy := new(TaskState)
-	*copy = *ts
+	copy.State = ts.State
+	copy.Failed = ts.Failed
+	copy.StartedAt = ts.StartedAt
+	copy.FinishedAt = ts.FinishedAt
 
 	if ts.Events != nil {
 		copy.Events = make([]*TaskEvent, len(ts.Events))
@@ -3583,9 +2894,6 @@ const (
 
 	// TaskLeaderDead indicates that the leader task within the has finished.
 	TaskLeaderDead = "Leader Task Dead"
-
-	// TaskGenericMessage is used by various subsystems to emit a message.
-	TaskGenericMessage = "Generic"
 )
 
 // TaskEvent is an event that effects the state of a task and contains meta-data
@@ -3647,9 +2955,6 @@ type TaskEvent struct {
 
 	// DriverMessage indicates a driver action being taken.
 	DriverMessage string
-
-	// GenericSource is the source of a message.
-	GenericSource string
 }
 
 func (te *TaskEvent) GoString() string {
@@ -3678,7 +2983,7 @@ func NewTaskEvent(event string) *TaskEvent {
 	}
 }
 
-// SetSetupError is used to store an error that occurred while setting up the
+// SetSetupError is used to store an error that occured while setting up the
 // task
 func (e *TaskEvent) SetSetupError(err error) *TaskEvent {
 	if err != nil {
@@ -3789,11 +3094,6 @@ func (e *TaskEvent) SetDriverMessage(m string) *TaskEvent {
 	return e
 }
 
-func (e *TaskEvent) SetGenericSource(s string) *TaskEvent {
-	e.GenericSource = s
-	return e
-}
-
 // TaskArtifact is an artifact to download before running the task.
 type TaskArtifact struct {
 	// GetterSource is the source to download an artifact using go-getter
@@ -3802,10 +3102,6 @@ type TaskArtifact struct {
 	// GetterOptions are options to use when downloading the artifact using
 	// go-getter.
 	GetterOptions map[string]string
-
-	// GetterMode is the go-getter.ClientMode for fetching resources.
-	// Defaults to "any" but can be set to "file" or "dir".
-	GetterMode string
 
 	// RelativeDest is the download destination given relative to the task's
 	// directory.
@@ -3853,17 +3149,6 @@ func (ta *TaskArtifact) Validate() error {
 	var mErr multierror.Error
 	if ta.GetterSource == "" {
 		mErr.Errors = append(mErr.Errors, fmt.Errorf("source must be specified"))
-	}
-
-	switch ta.GetterMode {
-	case "":
-		// Default to any
-		ta.GetterMode = GetterModeAny
-	case GetterModeAny, GetterModeFile, GetterModeDir:
-		// Ok
-	default:
-		mErr.Errors = append(mErr.Errors, fmt.Errorf("invalid artifact mode %q; must be one of: %s, %s, %s",
-			ta.GetterMode, GetterModeAny, GetterModeFile, GetterModeDir))
 	}
 
 	escaped, err := PathEscapesAllocDir("task", ta.RelativeDest)
@@ -3965,18 +3250,8 @@ func (c *Constraint) Validate() error {
 		mErr.Errors = append(mErr.Errors, errors.New("Missing constraint operand"))
 	}
 
-	// requireLtarget specifies whether the constraint requires an LTarget to be
-	// provided.
-	requireLtarget := true
-
 	// Perform additional validation based on operand
 	switch c.Operand {
-	case ConstraintDistinctHosts:
-		requireLtarget = false
-	case ConstraintSetContains:
-		if c.RTarget == "" {
-			mErr.Errors = append(mErr.Errors, fmt.Errorf("Set contains constraint requires an RTarget"))
-		}
 	case ConstraintRegex:
 		if _, err := regexp.Compile(c.RTarget); err != nil {
 			mErr.Errors = append(mErr.Errors, fmt.Errorf("Regular expression failed to compile: %v", err))
@@ -3985,29 +3260,7 @@ func (c *Constraint) Validate() error {
 		if _, err := version.NewConstraint(c.RTarget); err != nil {
 			mErr.Errors = append(mErr.Errors, fmt.Errorf("Version constraint is invalid: %v", err))
 		}
-	case ConstraintDistinctProperty:
-		// If a count is set, make sure it is convertible to a uint64
-		if c.RTarget != "" {
-			count, err := strconv.ParseUint(c.RTarget, 10, 64)
-			if err != nil {
-				mErr.Errors = append(mErr.Errors, fmt.Errorf("Failed to convert RTarget %q to uint64: %v", c.RTarget, err))
-			} else if count < 1 {
-				mErr.Errors = append(mErr.Errors, fmt.Errorf("Distinct Property must have an allowed count of 1 or greater: %d < 1", count))
-			}
-		}
-	case "=", "==", "is", "!=", "not", "<", "<=", ">", ">=":
-		if c.RTarget == "" {
-			mErr.Errors = append(mErr.Errors, fmt.Errorf("Operator %q requires an RTarget", c.Operand))
-		}
-	default:
-		mErr.Errors = append(mErr.Errors, fmt.Errorf("Unknown constraint type %q", c.Operand))
 	}
-
-	// Ensure we have an LTarget for the constraints that need one
-	if requireLtarget && c.LTarget == "" {
-		mErr.Errors = append(mErr.Errors, fmt.Errorf("No LTarget provided but is required by constraint"))
-	}
-
 	return mErr.ErrorOrNil()
 }
 
@@ -4057,7 +3310,7 @@ const (
 	VaultChangeModeRestart = "restart"
 )
 
-// Vault stores the set of permissions a task needs access to from Vault.
+// Vault stores the set of premissions a task needs access to from Vault.
 type Vault struct {
 	// Policies is the set of policies that the task needs access to
 	Policies []string
@@ -4112,7 +3365,7 @@ func (v *Vault) Validate() error {
 
 	for _, p := range v.Policies {
 		if p == "root" {
-			multierror.Append(&mErr, fmt.Errorf("Can not specify \"root\" policy"))
+			multierror.Append(&mErr, fmt.Errorf("Can not specifiy \"root\" policy"))
 		}
 	}
 
@@ -4127,219 +3380,6 @@ func (v *Vault) Validate() error {
 	}
 
 	return mErr.ErrorOrNil()
-}
-
-const (
-	// DeploymentStatuses are the various states a deployment can be be in
-	DeploymentStatusRunning    = "running"
-	DeploymentStatusPaused     = "paused"
-	DeploymentStatusFailed     = "failed"
-	DeploymentStatusSuccessful = "successful"
-	DeploymentStatusCancelled  = "cancelled"
-
-	// DeploymentStatusDescriptions are the various descriptions of the states a
-	// deployment can be in.
-	DeploymentStatusDescriptionRunning               = "Deployment is running"
-	DeploymentStatusDescriptionRunningNeedsPromotion = "Deployment is running but requires promotion"
-	DeploymentStatusDescriptionPaused                = "Deployment is paused"
-	DeploymentStatusDescriptionSuccessful            = "Deployment completed successfully"
-	DeploymentStatusDescriptionStoppedJob            = "Cancelled because job is stopped"
-	DeploymentStatusDescriptionNewerJob              = "Cancelled due to newer version of job"
-	DeploymentStatusDescriptionFailedAllocations     = "Failed due to unhealthy allocations"
-	DeploymentStatusDescriptionFailedByUser          = "Deployment marked as failed"
-)
-
-// DeploymentStatusDescriptionRollback is used to get the status description of
-// a deployment when rolling back to an older job.
-func DeploymentStatusDescriptionRollback(baseDescription string, jobVersion uint64) string {
-	return fmt.Sprintf("%s - rolling back to job version %d", baseDescription, jobVersion)
-}
-
-// DeploymentStatusDescriptionNoRollbackTarget is used to get the status description of
-// a deployment when there is no target to rollback to but autorevet is desired.
-func DeploymentStatusDescriptionNoRollbackTarget(baseDescription string) string {
-	return fmt.Sprintf("%s - no stable job version to auto revert to", baseDescription)
-}
-
-// Deployment is the object that represents a job deployment which is used to
-// transition a job between versions.
-type Deployment struct {
-	// ID is a generated UUID for the deployment
-	ID string
-
-	// JobID is the job the deployment is created for
-	JobID string
-
-	// JobVersion is the version of the job at which the deployment is tracking
-	JobVersion uint64
-
-	// JobModifyIndex is the modify index of the job at which the deployment is tracking
-	JobModifyIndex uint64
-
-	// JobCreateIndex is the create index of the job which the deployment is
-	// tracking. It is needed so that if the job gets stopped and reran we can
-	// present the correct list of deployments for the job and not old ones.
-	JobCreateIndex uint64
-
-	// TaskGroups is the set of task groups effected by the deployment and their
-	// current deployment status.
-	TaskGroups map[string]*DeploymentState
-
-	// The status of the deployment
-	Status string
-
-	// StatusDescription allows a human readable description of the deployment
-	// status.
-	StatusDescription string
-
-	CreateIndex uint64
-	ModifyIndex uint64
-}
-
-// NewDeployment creates a new deployment given the job.
-func NewDeployment(job *Job) *Deployment {
-	return &Deployment{
-		ID:                GenerateUUID(),
-		JobID:             job.ID,
-		JobVersion:        job.Version,
-		JobModifyIndex:    job.ModifyIndex,
-		JobCreateIndex:    job.CreateIndex,
-		Status:            DeploymentStatusRunning,
-		StatusDescription: DeploymentStatusDescriptionRunning,
-		TaskGroups:        make(map[string]*DeploymentState, len(job.TaskGroups)),
-	}
-}
-
-func (d *Deployment) Copy() *Deployment {
-	if d == nil {
-		return nil
-	}
-
-	c := &Deployment{}
-	*c = *d
-
-	c.TaskGroups = nil
-	if l := len(d.TaskGroups); d.TaskGroups != nil {
-		c.TaskGroups = make(map[string]*DeploymentState, l)
-		for tg, s := range d.TaskGroups {
-			c.TaskGroups[tg] = s.Copy()
-		}
-	}
-
-	return c
-}
-
-// Active returns whether the deployment is active or terminal.
-func (d *Deployment) Active() bool {
-	switch d.Status {
-	case DeploymentStatusRunning, DeploymentStatusPaused:
-		return true
-	default:
-		return false
-	}
-}
-
-// GetID is a helper for getting the ID when the object may be nil
-func (d *Deployment) GetID() string {
-	if d == nil {
-		return ""
-	}
-	return d.ID
-}
-
-// HasPlacedCanaries returns whether the deployment has placed canaries
-func (d *Deployment) HasPlacedCanaries() bool {
-	if d == nil || len(d.TaskGroups) == 0 {
-		return false
-	}
-	for _, group := range d.TaskGroups {
-		if len(group.PlacedCanaries) != 0 {
-			return true
-		}
-	}
-	return false
-}
-
-// RequiresPromotion returns whether the deployment requires promotion to
-// continue
-func (d *Deployment) RequiresPromotion() bool {
-	if d == nil || len(d.TaskGroups) == 0 || d.Status != DeploymentStatusRunning {
-		return false
-	}
-	for _, group := range d.TaskGroups {
-		if group.DesiredCanaries > 0 && !group.Promoted {
-			return true
-		}
-	}
-	return false
-}
-
-func (d *Deployment) GoString() string {
-	base := fmt.Sprintf("Deployment ID %q for job %q has status %q (%v):", d.ID, d.JobID, d.Status, d.StatusDescription)
-	for group, state := range d.TaskGroups {
-		base += fmt.Sprintf("\nTask Group %q has state:\n%#v", group, state)
-	}
-	return base
-}
-
-// DeploymentState tracks the state of a deployment for a given task group.
-type DeploymentState struct {
-	// AutoRevert marks whether the task group has indicated the job should be
-	// reverted on failure
-	AutoRevert bool
-
-	// Promoted marks whether the canaries have been promoted
-	Promoted bool
-
-	// PlacedCanaries is the set of placed canary allocations
-	PlacedCanaries []string
-
-	// DesiredCanaries is the number of canaries that should be created.
-	DesiredCanaries int
-
-	// DesiredTotal is the total number of allocations that should be created as
-	// part of the deployment.
-	DesiredTotal int
-
-	// PlacedAllocs is the number of allocations that have been placed
-	PlacedAllocs int
-
-	// HealthyAllocs is the number of allocations that have been marked healthy.
-	HealthyAllocs int
-
-	// UnhealthyAllocs are allocations that have been marked as unhealthy.
-	UnhealthyAllocs int
-}
-
-func (d *DeploymentState) GoString() string {
-	base := fmt.Sprintf("\tDesired Total: %d", d.DesiredTotal)
-	base += fmt.Sprintf("\n\tDesired Canaries: %d", d.DesiredCanaries)
-	base += fmt.Sprintf("\n\tPlaced Canaries: %#v", d.PlacedCanaries)
-	base += fmt.Sprintf("\n\tPromoted: %v", d.Promoted)
-	base += fmt.Sprintf("\n\tPlaced: %d", d.PlacedAllocs)
-	base += fmt.Sprintf("\n\tHealthy: %d", d.HealthyAllocs)
-	base += fmt.Sprintf("\n\tUnhealthy: %d", d.UnhealthyAllocs)
-	base += fmt.Sprintf("\n\tAutoRevert: %v", d.AutoRevert)
-	return base
-}
-
-func (d *DeploymentState) Copy() *DeploymentState {
-	c := &DeploymentState{}
-	*c = *d
-	c.PlacedCanaries = helper.CopySliceString(d.PlacedCanaries)
-	return c
-}
-
-// DeploymentStatusUpdate is used to update the status of a given deployment
-type DeploymentStatusUpdate struct {
-	// DeploymentID is the ID of the deployment to update
-	DeploymentID string
-
-	// Status is the new status of the deployment.
-	Status string
-
-	// StatusDescription is the new status description of the deployment.
-	StatusDescription string
 }
 
 const (
@@ -4412,14 +3452,6 @@ type Allocation struct {
 	// PreviousAllocation is the allocation that this allocation is replacing
 	PreviousAllocation string
 
-	// DeploymentID identifies an allocation as being created from a
-	// particular deployment
-	DeploymentID string
-
-	// DeploymentStatus captures the status of the allocation as part of the
-	// given deployment
-	DeploymentStatus *AllocDeploymentStatus
-
 	// Raft Indexes
 	CreateIndex uint64
 	ModifyIndex uint64
@@ -4433,40 +3465,14 @@ type Allocation struct {
 	CreateTime int64
 }
 
-// Index returns the index of the allocation. If the allocation is from a task
-// group with count greater than 1, there will be multiple allocations for it.
-func (a *Allocation) Index() uint {
-	l := len(a.Name)
-	prefix := len(a.JobID) + len(a.TaskGroup) + 2
-	if l <= 3 || l <= prefix {
-		return uint(0)
-	}
-
-	strNum := a.Name[prefix : len(a.Name)-1]
-	num, _ := strconv.Atoi(strNum)
-	return uint(num)
-}
-
 func (a *Allocation) Copy() *Allocation {
-	return a.copyImpl(true)
-}
-
-// Copy provides a copy of the allocation but doesn't deep copy the job
-func (a *Allocation) CopySkipJob() *Allocation {
-	return a.copyImpl(false)
-}
-
-func (a *Allocation) copyImpl(job bool) *Allocation {
 	if a == nil {
 		return nil
 	}
 	na := new(Allocation)
 	*na = *a
 
-	if job {
-		na.Job = na.Job.Copy()
-	}
-
+	na.Job = na.Job.Copy()
 	na.Resources = na.Resources.Copy()
 	na.SharedResources = na.SharedResources.Copy()
 
@@ -4479,7 +3485,6 @@ func (a *Allocation) copyImpl(job bool) *Allocation {
 	}
 
 	na.Metrics = na.Metrics.Copy()
-	na.DeploymentStatus = na.DeploymentStatus.Copy()
 
 	if a.TaskStates != nil {
 		ts := make(map[string]*TaskState, len(na.TaskStates))
@@ -4537,6 +3542,26 @@ func (a *Allocation) RanSuccessfully() bool {
 	return allSuccess
 }
 
+// Stub returns a list stub for the allocation
+func (a *Allocation) Stub() *AllocListStub {
+	return &AllocListStub{
+		ID:                 a.ID,
+		EvalID:             a.EvalID,
+		Name:               a.Name,
+		NodeID:             a.NodeID,
+		JobID:              a.JobID,
+		TaskGroup:          a.TaskGroup,
+		DesiredStatus:      a.DesiredStatus,
+		DesiredDescription: a.DesiredDescription,
+		ClientStatus:       a.ClientStatus,
+		ClientDescription:  a.ClientDescription,
+		TaskStates:         a.TaskStates,
+		CreateIndex:        a.CreateIndex,
+		ModifyIndex:        a.ModifyIndex,
+		CreateTime:         a.CreateTime,
+	}
+}
+
 // ShouldMigrate returns if the allocation needs data migration
 func (a *Allocation) ShouldMigrate() bool {
 	if a.DesiredStatus == AllocDesiredStatusStop || a.DesiredStatus == AllocDesiredStatusEvict {
@@ -4560,26 +3585,25 @@ func (a *Allocation) ShouldMigrate() bool {
 	return true
 }
 
-// Stub returns a list stub for the allocation
-func (a *Allocation) Stub() *AllocListStub {
-	return &AllocListStub{
-		ID:                 a.ID,
-		EvalID:             a.EvalID,
-		Name:               a.Name,
-		NodeID:             a.NodeID,
-		JobID:              a.JobID,
-		JobVersion:         a.Job.Version,
-		TaskGroup:          a.TaskGroup,
-		DesiredStatus:      a.DesiredStatus,
-		DesiredDescription: a.DesiredDescription,
-		ClientStatus:       a.ClientStatus,
-		ClientDescription:  a.ClientDescription,
-		TaskStates:         a.TaskStates,
-		DeploymentStatus:   a.DeploymentStatus,
-		CreateIndex:        a.CreateIndex,
-		ModifyIndex:        a.ModifyIndex,
-		CreateTime:         a.CreateTime,
+var (
+	// AllocationIndexRegex is a regular expression to find the allocation index.
+	AllocationIndexRegex = regexp.MustCompile(".+\\[(\\d+)\\]$")
+)
+
+// Index returns the index of the allocation. If the allocation is from a task
+// group with count greater than 1, there will be multiple allocations for it.
+func (a *Allocation) Index() int {
+	matches := AllocationIndexRegex.FindStringSubmatch(a.Name)
+	if len(matches) != 2 {
+		return -1
 	}
+
+	index, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return -1
+	}
+
+	return index
 }
 
 // AllocListStub is used to return a subset of alloc information
@@ -4589,14 +3613,12 @@ type AllocListStub struct {
 	Name               string
 	NodeID             string
 	JobID              string
-	JobVersion         uint64
 	TaskGroup          string
 	DesiredStatus      string
 	DesiredDescription string
 	ClientStatus       string
 	ClientDescription  string
 	TaskStates         map[string]*TaskState
-	DeploymentStatus   *AllocDeploymentStatus
 	CreateIndex        uint64
 	ModifyIndex        uint64
 	CreateTime         int64
@@ -4705,55 +3727,6 @@ func (a *AllocMetric) ScoreNode(node *Node, name string, score float64) {
 	a.Scores[key] = score
 }
 
-// AllocDeploymentStatus captures the status of the allocation as part of the
-// deployment. This can include things like if the allocation has been marked as
-// heatlhy.
-type AllocDeploymentStatus struct {
-	// Healthy marks whether the allocation has been marked healthy or unhealthy
-	// as part of a deployment. It can be unset if it has neither been marked
-	// healthy or unhealthy.
-	Healthy *bool
-
-	// ModifyIndex is the raft index in which the deployment status was last
-	// changed.
-	ModifyIndex uint64
-}
-
-// IsHealthy returns if the allocation is marked as healthy as part of a
-// deployment
-func (a *AllocDeploymentStatus) IsHealthy() bool {
-	if a == nil {
-		return false
-	}
-
-	return a.Healthy != nil && *a.Healthy
-}
-
-// IsUnhealthy returns if the allocation is marked as unhealthy as part of a
-// deployment
-func (a *AllocDeploymentStatus) IsUnhealthy() bool {
-	if a == nil {
-		return false
-	}
-
-	return a.Healthy != nil && !*a.Healthy
-}
-
-func (a *AllocDeploymentStatus) Copy() *AllocDeploymentStatus {
-	if a == nil {
-		return nil
-	}
-
-	c := new(AllocDeploymentStatus)
-	*c = *a
-
-	if a.Healthy != nil {
-		c.Healthy = helper.BoolToPtr(*a.Healthy)
-	}
-
-	return c
-}
-
 const (
 	EvalStatusBlocked   = "blocked"
 	EvalStatusPending   = "pending"
@@ -4763,15 +3736,13 @@ const (
 )
 
 const (
-	EvalTriggerJobRegister       = "job-register"
-	EvalTriggerJobDeregister     = "job-deregister"
-	EvalTriggerPeriodicJob       = "periodic-job"
-	EvalTriggerNodeUpdate        = "node-update"
-	EvalTriggerScheduled         = "scheduled"
-	EvalTriggerRollingUpdate     = "rolling-update"
-	EvalTriggerDeploymentWatcher = "deployment-watcher"
-	EvalTriggerFailedFollowUp    = "failed-follow-up"
-	EvalTriggerMaxPlans          = "max-plan-attempts"
+	EvalTriggerJobRegister   = "job-register"
+	EvalTriggerJobDeregister = "job-deregister"
+	EvalTriggerPeriodicJob   = "periodic-job"
+	EvalTriggerNodeUpdate    = "node-update"
+	EvalTriggerScheduled     = "scheduled"
+	EvalTriggerRollingUpdate = "rolling-update"
+	EvalTriggerMaxPlans      = "max-plan-attempts"
 )
 
 const (
@@ -4791,11 +3762,6 @@ const (
 	// evaluations and allocations are terminal. If so, we delete these out of
 	// the system.
 	CoreJobJobGC = "job-gc"
-
-	// CoreJobDeploymentGC is used for the garbage collection of eligible
-	// deployments. We periodically scan garbage collectible deployments and
-	// check if they are terminal. If so, we delete these out of the system.
-	CoreJobDeploymentGC = "deployment-gc"
 
 	// CoreJobForceGC is used to force garbage collection of all GCable objects.
 	CoreJobForceGC = "force-gc"
@@ -4837,9 +3803,6 @@ type Evaluation struct {
 	// NodeModifyIndex is the modify index of the node at the time
 	// the evaluation was created
 	NodeModifyIndex uint64
-
-	// DeploymentID is the ID of the deployment that triggered the evaluation.
-	DeploymentID string
 
 	// Status of the evaluation
 	Status string
@@ -5022,23 +3985,6 @@ func (e *Evaluation) CreateBlockedEval(classEligibility map[string]bool, escaped
 	}
 }
 
-// CreateFailedFollowUpEval creates a follow up evaluation when the current one
-// has been marked as failed because it has hit the delivery limit and will not
-// be retried by the eval_broker.
-func (e *Evaluation) CreateFailedFollowUpEval(wait time.Duration) *Evaluation {
-	return &Evaluation{
-		ID:             GenerateUUID(),
-		Priority:       e.Priority,
-		Type:           e.Type,
-		TriggeredBy:    EvalTriggerFailedFollowUp,
-		JobID:          e.JobID,
-		JobModifyIndex: e.JobModifyIndex,
-		Status:         EvalStatusPending,
-		Wait:           wait,
-		PreviousEval:   e.ID,
-	}
-}
-
 // Plan is used to submit a commit plan for task allocations. These
 // are submitted to the leader which verifies that resources have
 // not been overcommitted before admiting the plan.
@@ -5078,15 +4024,6 @@ type Plan struct {
 	// Annotations contains annotations by the scheduler to be used by operators
 	// to understand the decisions made by the scheduler.
 	Annotations *PlanAnnotations
-
-	// Deployment is the deployment created or updated by the scheduler that
-	// should be applied by the planner.
-	Deployment *Deployment
-
-	// DeploymentUpdates is a set of status updates to apply to the given
-	// deployments. This allows the scheduler to cancel any unneeded deployment
-	// because the job is stopped or the update block is removed.
-	DeploymentUpdates []*DeploymentStatusUpdate
 }
 
 // AppendUpdate marks the allocation for eviction. The clientStatus of the
@@ -5140,10 +4077,7 @@ func (p *Plan) AppendAlloc(alloc *Allocation) {
 
 // IsNoOp checks if this plan would do nothing
 func (p *Plan) IsNoOp() bool {
-	return len(p.NodeUpdate) == 0 &&
-		len(p.NodeAllocation) == 0 &&
-		p.Deployment == nil &&
-		len(p.DeploymentUpdates) == 0
+	return len(p.NodeUpdate) == 0 && len(p.NodeAllocation) == 0
 }
 
 // PlanResult is the result of a plan submitted to the leader.
@@ -5153,12 +4087,6 @@ type PlanResult struct {
 
 	// NodeAllocation contains all the allocations that were committed.
 	NodeAllocation map[string][]*Allocation
-
-	// Deployment is the deployment that was committed.
-	Deployment *Deployment
-
-	// DeploymentUpdates is the set of deployment updates that were committed.
-	DeploymentUpdates []*DeploymentStatusUpdate
 
 	// RefreshIndex is the index the worker should refresh state up to.
 	// This allows all evictions and allocations to be materialized.
@@ -5173,8 +4101,7 @@ type PlanResult struct {
 
 // IsNoOp checks if this plan result would do nothing
 func (p *PlanResult) IsNoOp() bool {
-	return len(p.NodeUpdate) == 0 && len(p.NodeAllocation) == 0 &&
-		len(p.DeploymentUpdates) == 0 && p.Deployment == nil
+	return len(p.NodeUpdate) == 0 && len(p.NodeAllocation) == 0
 }
 
 // FullCommit is used to check if all the allocations in a plan
@@ -5207,12 +4134,6 @@ type DesiredUpdates struct {
 	Stop              uint64
 	InPlaceUpdate     uint64
 	DestructiveUpdate uint64
-	Canary            uint64
-}
-
-func (d *DesiredUpdates) GoString() string {
-	return fmt.Sprintf("(place %d) (inplace %d) (destructive %d) (stop %d) (migrate %d) (ignore %d) (canary %d)",
-		d.Place, d.InPlaceUpdate, d.DestructiveUpdate, d.Stop, d.Migrate, d.Ignore, d.Canary)
 }
 
 // msgpackHandle is a shared handle for encoding/decoding of structs
@@ -5225,18 +4146,6 @@ var MsgpackHandle = func() *codec.MsgpackHandle {
 	h.MapType = reflect.TypeOf(map[string]interface{}(nil))
 	return h
 }()
-
-var (
-	// JsonHandle and JsonHandlePretty are the codec handles to JSON encode
-	// structs. The pretty handle will add indents for easier human consumption.
-	JsonHandle = &codec.JsonHandle{
-		HTMLCharsAsIs: true,
-	}
-	JsonHandlePretty = &codec.JsonHandle{
-		HTMLCharsAsIs: true,
-		Indent:        4,
-	}
-)
 
 var HashiMsgpackHandle = func() *hcodec.MsgpackHandle {
 	h := &hcodec.MsgpackHandle{RawToString: true}

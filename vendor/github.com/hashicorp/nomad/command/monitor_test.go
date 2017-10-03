@@ -11,7 +11,6 @@ import (
 )
 
 func TestMonitor_Update_Eval(t *testing.T) {
-	t.Parallel()
 	ui := new(cli.MockUi)
 	mon := newMonitor(ui, nil, fullId)
 
@@ -65,7 +64,6 @@ func TestMonitor_Update_Eval(t *testing.T) {
 }
 
 func TestMonitor_Update_Allocs(t *testing.T) {
-	t.Parallel()
 	ui := new(cli.MockUi)
 	mon := newMonitor(ui, nil, fullId)
 
@@ -136,7 +134,6 @@ func TestMonitor_Update_Allocs(t *testing.T) {
 }
 
 func TestMonitor_Update_AllocModification(t *testing.T) {
-	t.Parallel()
 	ui := new(cli.MockUi)
 	mon := newMonitor(ui, nil, fullId)
 
@@ -172,9 +169,8 @@ func TestMonitor_Update_AllocModification(t *testing.T) {
 }
 
 func TestMonitor_Monitor(t *testing.T) {
-	t.Parallel()
-	srv, client, _ := testServer(t, false, nil)
-	defer srv.Shutdown()
+	srv, client, _ := testServer(t, nil)
+	defer srv.Stop()
 
 	// Create the monitor
 	ui := new(cli.MockUi)
@@ -182,7 +178,7 @@ func TestMonitor_Monitor(t *testing.T) {
 
 	// Submit a job - this creates a new evaluation we can monitor
 	job := testJob("job1")
-	resp, _, err := client.Jobs().Register(job, nil)
+	evalID, _, err := client.Jobs().Register(job, nil)
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}
@@ -192,7 +188,7 @@ func TestMonitor_Monitor(t *testing.T) {
 	doneCh := make(chan struct{})
 	go func() {
 		defer close(doneCh)
-		code = mon.monitor(resp.EvalID, false)
+		code = mon.monitor(evalID, false)
 	}()
 
 	// Wait for completion
@@ -210,7 +206,7 @@ func TestMonitor_Monitor(t *testing.T) {
 
 	// Check the output
 	out := ui.OutputWriter.String()
-	if !strings.Contains(out, resp.EvalID) {
+	if !strings.Contains(out, evalID) {
 		t.Fatalf("missing eval\n\n%s", out)
 	}
 	if !strings.Contains(out, "finished with status") {
@@ -219,9 +215,8 @@ func TestMonitor_Monitor(t *testing.T) {
 }
 
 func TestMonitor_MonitorWithPrefix(t *testing.T) {
-	t.Parallel()
-	srv, client, _ := testServer(t, false, nil)
-	defer srv.Shutdown()
+	srv, client, _ := testServer(t, nil)
+	defer srv.Stop()
 
 	// Create the monitor
 	ui := new(cli.MockUi)
@@ -229,7 +224,7 @@ func TestMonitor_MonitorWithPrefix(t *testing.T) {
 
 	// Submit a job - this creates a new evaluation we can monitor
 	job := testJob("job1")
-	resp, _, err := client.Jobs().Register(job, nil)
+	evalID, _, err := client.Jobs().Register(job, nil)
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}
@@ -239,7 +234,7 @@ func TestMonitor_MonitorWithPrefix(t *testing.T) {
 	doneCh := make(chan struct{})
 	go func() {
 		defer close(doneCh)
-		code = mon.monitor(resp.EvalID[:13], true)
+		code = mon.monitor(evalID[:8], true)
 	}()
 
 	// Wait for completion
@@ -257,10 +252,10 @@ func TestMonitor_MonitorWithPrefix(t *testing.T) {
 
 	// Check the output
 	out := ui.OutputWriter.String()
-	if !strings.Contains(out, resp.EvalID[:8]) {
+	if !strings.Contains(out, evalID[:8]) {
 		t.Fatalf("missing eval\n\n%s", out)
 	}
-	if strings.Contains(out, resp.EvalID) {
+	if strings.Contains(out, evalID) {
 		t.Fatalf("expected truncated eval id, got: %s", out)
 	}
 	if !strings.Contains(out, "finished with status") {
@@ -268,7 +263,7 @@ func TestMonitor_MonitorWithPrefix(t *testing.T) {
 	}
 
 	// Fail on identifier with too few characters
-	code = mon.monitor(resp.EvalID[:1], true)
+	code = mon.monitor(evalID[:1], true)
 	if code != 1 {
 		t.Fatalf("expect exit 1, got: %d", code)
 	}
@@ -277,7 +272,7 @@ func TestMonitor_MonitorWithPrefix(t *testing.T) {
 	}
 	ui.ErrorWriter.Reset()
 
-	code = mon.monitor(resp.EvalID[:3], true)
+	code = mon.monitor(evalID[:3], true)
 	if code != 2 {
 		t.Fatalf("expect exit 2, got: %d", code)
 	}
@@ -288,7 +283,6 @@ func TestMonitor_MonitorWithPrefix(t *testing.T) {
 }
 
 func TestMonitor_DumpAllocStatus(t *testing.T) {
-	t.Parallel()
 	ui := new(cli.MockUi)
 
 	// Create an allocation and dump its status to the UI

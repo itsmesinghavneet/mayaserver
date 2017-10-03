@@ -8,12 +8,12 @@ svg.logo {
     }
 
     path.left {
-      fill: $nomad-green;
+      fill: $nomad-green-dark;
       opacity: 1.0;
     }
 
     path.right {
-      fill: $nomad-green-dark;
+      fill: $nomad-green-light;
       opacity: 1.0;
     }
 
@@ -36,7 +36,7 @@ svg.logo {
 
     path.top {
       fill: $white;
-      opacity: 1.0;
+      opacity: 0.8;
     }
 
     path.left {
