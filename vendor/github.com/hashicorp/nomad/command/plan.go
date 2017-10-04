@@ -353,17 +353,15 @@ func formatTaskDiff(task *api.TaskDiff, startPrefix, taskPrefix int, verbose boo
 // of spaces to put between the marker and object name output.
 func formatObjectDiff(diff *api.ObjectDiff, startPrefix, keyPrefix int) string {
 	start := strings.Repeat(" ", startPrefix)
-	marker, markerLen := getDiffString(diff.Type)
+	marker, _ := getDiffString(diff.Type)
 	out := fmt.Sprintf("%s%s%s%s {\n", start, marker, strings.Repeat(" ", keyPrefix), diff.Name)
 
 	// Determine the length of the longest name and longest diff marker to
 	// properly align names and values
 	longestField, longestMarker := getLongestPrefixes(diff.Fields, diff.Objects)
-	subStartPrefix := startPrefix + keyPrefix + 2
+	subStartPrefix := startPrefix + 2
 	out += alignedFieldAndObjects(diff.Fields, diff.Objects, subStartPrefix, longestField, longestMarker)
-
-	endprefix := strings.Repeat(" ", startPrefix+markerLen+keyPrefix)
-	return fmt.Sprintf("%s\n%s}", out, endprefix)
+	return fmt.Sprintf("%s\n%s}", out, start)
 }
 
 // formatFieldDiff produces an annotated diff of a field. startPrefix is the

@@ -22,7 +22,7 @@ func NomadExecutable() (string, error) {
 		return "", fmt.Errorf("Failed to determine the nomad executable: %v", err)
 	}
 
-	if _, err := os.Stat(bin); err == nil && isNomad(bin, nomadExe) {
+	if _, err := os.Stat(bin); err == nil {
 		return bin, nil
 	}
 

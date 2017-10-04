@@ -228,9 +228,7 @@ will exit with an error at startup.
     [go-discover](https://github.com/hashicorp/go-discover) library for doing
     automatic cluster joining using cloud metadata. To use retry-join with a
     supported cloud provider, specify the configuration on the command line or
-    configuration file as a `key=value key=value ...` string. The values need to
-	be URL encoded but for most practical purposes you need to replace spaces
-	with `+` signs.
+    configuration file.
 
     ```sh
     $ consul agent -retry-join "provider=my-cloud config=val ..."
@@ -273,7 +271,7 @@ will exit with an error at startup.
     - `tag_value` (required) - the value of the tag to auto-join on.
     - `region` (optional) - the AWS region to authenticate in.
     - `access_key_id` (optional) - the AWS access key for authentication (see below for more information about authenticating).
-    - `secret_access_key` (optional) - the AWS secret access key for authentication (see below for more information about authenticating).
+    - `secret_access_id` (optional) - the AWS secret access key for authentication (see below for more information about authenticating).
 
     #### Authentication &amp; Precedence
 
@@ -318,7 +316,7 @@ will exit with an error at startup.
     project which have the given `tag_value`.
 
     ```sh
-    $ consul agent -retry-join "provider=gce project_name=xxx tag_value=xxx"
+    $ consul agent -retry-join provider=gce project_name=xxx tag_value=xxx
     ```
 
     ```json
@@ -402,8 +400,8 @@ will exit with an error at startup.
 
 * <a name="_retry_join_wan"></a><a href="#_retry_join_wan">`-retry-join-wan`</a> - Similar
   to [`retry-join`](#_retry_join) but allows retrying a wan join if the first attempt fails.
-  This is useful for cases where we know the address will become available eventually. 
-  As of Consul 0.9.3 [Cloud Auto-Joining](#cloud-auto-joining) is supported as well.
+  This is useful for cases where we know the address will become
+  available eventually.
 
 * <a name="_retry_interval_wan"></a><a href="#_retry_interval_wan">`-retry-interval-wan`</a> - Time
   to wait between [`-join-wan`](#_join_wan) attempts.
@@ -461,11 +459,6 @@ will exit with an error at startup.
   previous leave and attempt to rejoin the cluster when starting. By default, Consul treats leave
   as a permanent intent and does not attempt to join the cluster again when starting. This flag
   allows the previous state to be used to rejoin the cluster.
-
-* <a name="_segment"></a><a href="#_segment">`-segment`</a> - (Enterprise-only) This flag is used to set
-  the name of the network segment the agent belongs to. An agent can only join and communicate with other agents
-  within its network segment. See the [Network Segments Guide](/docs/guides/segments.html) for more details.
-  By default, this is an empty string, which is the default network segment.
 
 * <a name="_server"></a><a href="#_server">`-server`</a> - This flag is used to control if an
   agent is in server or client mode. When provided,
@@ -942,19 +935,6 @@ Consul will not enable TLS for the HTTP API unless the `https` port has been ass
   value was unconditionally set to `false`). On agents in client-mode, this defaults to `true`
   and for agents in server-mode, this defaults to `false`.
 
-* <a name="limits"></a><a href="#limits">`limits`</a> Available in Consul 0.9.3 and later, this
-  is a nested object that configures limits that are enforced by the agent. Currently, this only
-  applies to agents in client mode, not Consul servers. The following parameters are available:
-
-    *   <a name="rpc_rate"></a><a href="#rpc_rate">`rpc_rate`</a> - Configures the RPC rate
-        limiter by setting the maximum request rate that this agent is allowed to make for RPC
-        requests to Consul servers, in requests per second. Defaults to infinite, which disables
-        rate limiting.
-    *   <a name="rpc_rate"></a><a href="#rpc_max_burst">`rpc_max_burst`</a> - The size of the token
-        bucket used to recharge the RPC rate limiter. Defaults to 1000 tokens, and each token is
-        good for a single RPC call to a Consul server. See https://en.wikipedia.org/wiki/Token_bucket
-        for more details about how token bucket rate limiters operate.
-
 * <a name="log_level"></a><a href="#log_level">`log_level`</a> Equivalent to the
   [`-log-level` command-line flag](#_log_level).
 
@@ -1069,23 +1049,6 @@ Consul will not enable TLS for the HTTP API unless the `https` port has been ass
 
 * <a name="retry_interval_wan"></a><a href="#retry_interval_wan">`retry_interval_wan`</a> Equivalent to the
   [`-retry-interval-wan` command-line flag](#_retry_interval_wan).
-
-* <a name="segment"></a><a href="#segment">`segment`</a> (Enterprise-only) Equivalent to the
-  [`-segment` command-line flag](#_segment).
-
-* <a name="segments"></a><a href="#segments">`segments`</a> (Enterprise-only) This is a list of nested objects that allows setting
-  the bind/advertise information for network segments. This can only be set on servers. See the
-  [Network Segments Guide](/docs/guides/segments.html) for more details.
-    * <a name="segment_name"></a><a href="#segment_name">`name`</a> - The name of the segment. Must be a string between
-    1 and 64 characters in length.
-    * <a name="segment_bind"></a><a href="#segment_bind">`bind`</a> - The bind address to use for the segment's gossip layer.
-    Defaults to the [`-bind`](#_bind) value if not provided.
-    * <a name="segment_port"></a><a href="#segment_port">`port`</a> - The port to use for the segment's gossip layer.
-    * <a name="segment_advertise"></a><a href="#segment_advertise">`advertise`</a> - The advertise address to use for the
-    segment's gossip layer. Defaults to the [`-advertise`](#_advertise) value if not provided.
-    * <a name="segment_rpc_listener"></a><a href="#segment_rpc_listener">`rpc_listener`</a> - If true, a separate RPC listener will
-    be started on this segment's [`-bind`](#_bind) address on the rpc port. Only valid if the segment's bind address differs from the
-    [`-bind`](#_bind) address. Defaults to false.
 
 * <a name="server"></a><a href="#server">`server`</a> Equivalent to the
   [`-server` command-line flag](#_server).
@@ -1252,7 +1215,7 @@ Consul will not enable TLS for the HTTP API unless the `https` port has been ass
 
     Starting in Consul 0.7 and later, node addresses in responses to HTTP requests will also prefer a
     node's configured <a href="#_advertise-wan">WAN address</a> when querying for a node in a remote
-    datacenter. An [`X-Consul-Translate-Addresses`](/api/index.html#translated-addresses) header
+    datacenter. An [`X-Consul-Translate-Addresses`](/api/index.html#translate_header) header
     will be present on all responses when translation is enabled to help clients know that the addresses
     may be translated. The `TaggedAddresses` field in responses also have a `lan` address for clients that
     need knowledge of that address, regardless of translation.

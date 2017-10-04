@@ -1,4 +1,4 @@
-VERSION?="0.3.22"
+VERSION?="0.3.13"
 
 website:
 	@echo "==> Starting website in Docker..."

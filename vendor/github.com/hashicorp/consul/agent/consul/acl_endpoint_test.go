@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hashicorp/consul/acl"
 	"github.com/hashicorp/consul/agent/structs"
 	"github.com/hashicorp/consul/lib"
 	"github.com/hashicorp/consul/testrpc"
@@ -199,7 +198,7 @@ func TestACLEndpoint_Update_PurgeCache(t *testing.T) {
 
 	// Resolve again
 	acl3, err := s1.resolveToken(id)
-	if !acl.IsErrNotFound(err) {
+	if err == nil || err.Error() != aclNotFound {
 		t.Fatalf("err: %v", err)
 	}
 	if acl3 != nil {
@@ -277,7 +276,7 @@ func TestACLEndpoint_Apply_Denied(t *testing.T) {
 	}
 	var out string
 	err := msgpackrpc.CallWithCodec(codec, "ACL.Apply", &arg, &out)
-	if !acl.IsErrPermissionDenied(err) {
+	if err == nil || !strings.Contains(err.Error(), permissionDenied) {
 		t.Fatalf("err: %v", err)
 	}
 }
@@ -527,7 +526,7 @@ func TestACLEndpoint_List_Denied(t *testing.T) {
 	}
 	var acls structs.IndexedACLs
 	err := msgpackrpc.CallWithCodec(codec, "ACL.List", &getR, &acls)
-	if !acl.IsErrPermissionDenied(err) {
+	if err == nil || !strings.Contains(err.Error(), permissionDenied) {
 		t.Fatalf("err: %v", err)
 	}
 }

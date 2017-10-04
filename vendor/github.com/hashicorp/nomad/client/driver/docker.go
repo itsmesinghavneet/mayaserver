@@ -419,9 +419,8 @@ func (d *DockerDriver) FSIsolation() cstructs.FSIsolation {
 	return cstructs.FSIsolationImage
 }
 
-// getDockerCoordinator returns the docker coordinator and the caller ID to use when
-// interacting with the coordinator
-func (d *DockerDriver) getDockerCoordinator(client *docker.Client) (*dockerCoordinator, string) {
+// getDockerCoordinator returns the docker coordinator
+func (d *DockerDriver) getDockerCoordinator(client *docker.Client) *dockerCoordinator {
 	config := &dockerCoordinatorConfig{
 		client:      client,
 		cleanup:     d.config.ReadBoolDefault(dockerCleanupImageConfigOption, dockerCleanupImageConfigDefault),
@@ -429,7 +428,7 @@ func (d *DockerDriver) getDockerCoordinator(client *docker.Client) (*dockerCoord
 		removeDelay: d.config.ReadDurationDefault(dockerImageRemoveDelayConfigOption, dockerImageRemoveDelayConfigDefault),
 	}
 
-	return GetDockerCoordinator(config), fmt.Sprintf("%s-%s", d.DriverContext.allocID, d.DriverContext.taskName)
+	return GetDockerCoordinator(config)
 }
 
 func (d *DockerDriver) Prestart(ctx *ExecContext, task *structs.Task) (*CreatedResources, error) {
@@ -475,7 +474,7 @@ func (d *DockerDriver) Start(ctx *ExecContext, task *structs.Task) (DriverHandle
 		TaskEnv:        d.taskEnv,
 		Task:           task,
 		Driver:         "docker",
-		AllocID:        d.DriverContext.allocID,
+		AllocID:        ctx.AllocID,
 		LogDir:         ctx.TaskDir.LogDir,
 		TaskDir:        ctx.TaskDir.Dir,
 		PortLowerBound: d.config.ClientMinPort,
@@ -508,10 +507,13 @@ func (d *DockerDriver) Start(ctx *ExecContext, task *structs.Task) (DriverHandle
 
 	container, err := d.createContainer(config)
 	if err != nil {
-		wrapped := fmt.Sprintf("Failed to create container: %v", err)
-		d.logger.Printf("[ERR] driver.docker: %s", wrapped)
+		d.logger.Printf("[ERR] driver.docker: failed to create container: %s", err)
 		pluginClient.Kill()
-		return nil, structs.WrapRecoverable(wrapped, err)
+		if rerr, ok := err.(*structs.RecoverableError); ok {
+			rerr.Err = fmt.Sprintf("Failed to create container: %s", rerr.Err)
+			return nil, rerr
+		}
+		return nil, err
 	}
 
 	d.logger.Printf("[INFO] driver.docker: created container %s", container.ID)
@@ -586,14 +588,14 @@ func (d *DockerDriver) Cleanup(_ *ExecContext, res *CreatedResources) error {
 // cleanupImage removes a Docker image. No error is returned if the image
 // doesn't exist or is still in use. Requires the global client to already be
 // initialized.
-func (d *DockerDriver) cleanupImage(imageID string) error {
+func (d *DockerDriver) cleanupImage(id string) error {
 	if !d.config.ReadBoolDefault(dockerCleanupImageConfigOption, dockerCleanupImageConfigDefault) {
 		// Config says not to cleanup
 		return nil
 	}
 
-	coordinator, callerID := d.getDockerCoordinator(client)
-	coordinator.RemoveImage(imageID, callerID)
+	coordinator := d.getDockerCoordinator(client)
+	coordinator.RemoveImage(id)
 
 	return nil
 }
@@ -912,7 +914,7 @@ func (d *DockerDriver) createContainerConfig(ctx *ExecContext, task *structs.Tas
 
 	config.Env = d.taskEnv.EnvList()
 
-	containerName := fmt.Sprintf("%s-%s", task.Name, d.DriverContext.allocID)
+	containerName := fmt.Sprintf("%s-%s", task.Name, ctx.AllocID)
 	d.logger.Printf("[DEBUG] driver.docker: setting container name to: %s", containerName)
 
 	var networkingConfig *docker.NetworkingConfig
@@ -950,7 +952,7 @@ func (d *DockerDriver) createImage(driverConfig *DockerDriverConfig, client *doc
 		tag = "latest"
 	}
 
-	coordinator, callerID := d.getDockerCoordinator(client)
+	coordinator := d.getDockerCoordinator(client)
 
 	// We're going to check whether the image is already downloaded. If the tag
 	// is "latest", or ForcePull is set, we have to check for a new version every time so we don't
@@ -960,7 +962,7 @@ func (d *DockerDriver) createImage(driverConfig *DockerDriverConfig, client *doc
 	} else if tag != "latest" {
 		if dockerImage, _ := client.InspectImage(image); dockerImage != nil {
 			// Image exists so just increment its reference count
-			coordinator.IncrementImageReference(dockerImage.ID, image, callerID)
+			coordinator.IncrementImageReference(dockerImage.ID, image)
 			return dockerImage.ID, nil
 		}
 	}
@@ -999,8 +1001,8 @@ func (d *DockerDriver) pullImage(driverConfig *DockerDriverConfig, client *docke
 	}
 
 	d.emitEvent("Downloading image %s:%s", repo, tag)
-	coordinator, callerID := d.getDockerCoordinator(client)
-	return coordinator.PullImage(driverConfig.ImageName, authOptions, callerID)
+	coordinator := d.getDockerCoordinator(client)
+	return coordinator.PullImage(driverConfig.ImageName, authOptions)
 }
 
 // loadImage creates an image by loading it from the file system
@@ -1025,8 +1027,8 @@ func (d *DockerDriver) loadImage(driverConfig *DockerDriverConfig, client *docke
 		return "", recoverableErrTimeouts(err)
 	}
 
-	coordinator, callerID := d.getDockerCoordinator(client)
-	coordinator.IncrementImageReference(dockerImage.ID, driverConfig.ImageName, callerID)
+	coordinator := d.getDockerCoordinator(client)
+	coordinator.IncrementImageReference(dockerImage.ID, driverConfig.ImageName)
 	return dockerImage.ID, nil
 }
 
@@ -1101,7 +1103,7 @@ CREATE:
 	} else if strings.Contains(strings.ToLower(createErr.Error()), "no such image") {
 		// There is still a very small chance this is possible even with the
 		// coordinator so retry.
-		return nil, structs.NewRecoverableError(createErr, true)
+		structs.NewRecoverableError(createErr, true)
 	}
 
 	return nil, recoverableErrTimeouts(createErr)
@@ -1184,8 +1186,8 @@ func (d *DockerDriver) Open(ctx *ExecContext, handleID string) (DriverHandle, er
 
 	// Increment the reference count since we successfully attached to this
 	// container
-	coordinator, callerID := d.getDockerCoordinator(client)
-	coordinator.IncrementImageReference(pid.ImageID, pid.Image, callerID)
+	coordinator := d.getDockerCoordinator(client)
+	coordinator.IncrementImageReference(pid.ImageID, pid.Image)
 
 	// Return a driver handle
 	h := &DockerHandle{

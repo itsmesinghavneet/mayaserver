@@ -201,7 +201,6 @@ type LogEventFn func(message string, args ...interface{})
 // each time we do it. Used in conjection with Factory, above.
 type DriverContext struct {
 	taskName string
-	allocID  string
 	config   *config.Config
 	logger   *log.Logger
 	node     *structs.Node
@@ -220,11 +219,10 @@ func NewEmptyDriverContext() *DriverContext {
 // This enables other packages to create DriverContexts but keeps the fields
 // private to the driver. If we want to change this later we can gorename all of
 // the fields in DriverContext.
-func NewDriverContext(taskName, allocID string, config *config.Config, node *structs.Node,
+func NewDriverContext(taskName string, config *config.Config, node *structs.Node,
 	logger *log.Logger, taskEnv *env.TaskEnvironment, eventEmitter LogEventFn) *DriverContext {
 	return &DriverContext{
 		taskName:  taskName,
-		allocID:   allocID,
 		config:    config,
 		node:      node,
 		logger:    logger,
@@ -260,12 +258,16 @@ type DriverHandle interface {
 type ExecContext struct {
 	// TaskDir contains information about the task directory structure.
 	TaskDir *allocdir.TaskDir
+
+	// Alloc ID
+	AllocID string
 }
 
 // NewExecContext is used to create a new execution context
-func NewExecContext(td *allocdir.TaskDir) *ExecContext {
+func NewExecContext(td *allocdir.TaskDir, allocID string) *ExecContext {
 	return &ExecContext{
 		TaskDir: td,
+		AllocID: allocID,
 	}
 }
 

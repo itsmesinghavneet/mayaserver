@@ -60,14 +60,10 @@ func (a *Agent) populateCache(self *AgentSelf) {
 		a.nodeName = self.Member.Name
 	}
 	if a.datacenter == "" {
-		if val, ok := self.Config["Datacenter"]; ok {
-			a.datacenter, _ = val.(string)
-		}
+		a.datacenter, _ = self.Member.Tags["dc"]
 	}
 	if a.region == "" {
-		if val, ok := self.Config["Region"]; ok {
-			a.region, _ = val.(string)
-		}
+		a.region, _ = self.Member.Tags["region"]
 	}
 }
 

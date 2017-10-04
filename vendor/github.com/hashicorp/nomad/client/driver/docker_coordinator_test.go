@@ -63,7 +63,7 @@ func TestDockerCoordinator_ConcurrentPulls(t *testing.T) {
 	id := ""
 	for i := 0; i < 10; i++ {
 		go func() {
-			id, _ = coordinator.PullImage(image, nil, structs.GenerateUUID())
+			id, _ = coordinator.PullImage(image, nil)
 		}()
 	}
 
@@ -74,8 +74,8 @@ func TestDockerCoordinator_ConcurrentPulls(t *testing.T) {
 		}
 
 		// Check the reference count
-		if references := coordinator.imageRefCount[id]; len(references) != 10 {
-			return false, fmt.Errorf("Got reference count %d; want %d", len(references), 10)
+		if r := coordinator.imageRefCount[id]; r != 10 {
+			return false, fmt.Errorf("Got reference count %d; want %d", r, 10)
 		}
 
 		// Ensure there is no pull future
@@ -107,35 +107,33 @@ func TestDockerCoordinator_Pull_Remove(t *testing.T) {
 	coordinator := NewDockerCoordinator(config)
 
 	id := ""
-	callerIDs := make([]string, 10, 10)
 	for i := 0; i < 10; i++ {
-		callerIDs[i] = structs.GenerateUUID()
-		id, _ = coordinator.PullImage(image, nil, callerIDs[i])
+		id, _ = coordinator.PullImage(image, nil)
 	}
 
 	// Check the reference count
-	if references := coordinator.imageRefCount[id]; len(references) != 10 {
-		t.Fatalf("Got reference count %d; want %d", len(references), 10)
+	if r := coordinator.imageRefCount[id]; r != 10 {
+		t.Fatalf("Got reference count %d; want %d", r, 10)
 	}
 
 	// Remove some
 	for i := 0; i < 8; i++ {
-		coordinator.RemoveImage(id, callerIDs[i])
+		coordinator.RemoveImage(id)
 	}
 
 	// Check the reference count
-	if references := coordinator.imageRefCount[id]; len(references) != 2 {
-		t.Fatalf("Got reference count %d; want %d", len(references), 2)
+	if r := coordinator.imageRefCount[id]; r != 2 {
+		t.Fatalf("Got reference count %d; want %d", r, 2)
 	}
 
 	// Remove all
-	for i := 8; i < 10; i++ {
-		coordinator.RemoveImage(id, callerIDs[i])
+	for i := 0; i < 2; i++ {
+		coordinator.RemoveImage(id)
 	}
 
 	// Check the reference count
-	if references := coordinator.imageRefCount[id]; len(references) != 0 {
-		t.Fatalf("Got reference count %d; want %d", len(references), 0)
+	if r := coordinator.imageRefCount[id]; r != 0 {
+		t.Fatalf("Got reference count %d; want %d", r, 0)
 	}
 
 	// Check that only one delete happened
@@ -167,30 +165,29 @@ func TestDockerCoordinator_Remove_Cancel(t *testing.T) {
 
 	// Create a coordinator
 	coordinator := NewDockerCoordinator(config)
-	callerID := structs.GenerateUUID()
 
 	// Pull image
-	id, _ := coordinator.PullImage(image, nil, callerID)
+	id, _ := coordinator.PullImage(image, nil)
 
 	// Check the reference count
-	if references := coordinator.imageRefCount[id]; len(references) != 1 {
-		t.Fatalf("Got reference count %d; want %d", len(references), 1)
+	if r := coordinator.imageRefCount[id]; r != 1 {
+		t.Fatalf("Got reference count %d; want %d", r, 10)
 	}
 
 	// Remove image
-	coordinator.RemoveImage(id, callerID)
+	coordinator.RemoveImage(id)
 
 	// Check the reference count
-	if references := coordinator.imageRefCount[id]; len(references) != 0 {
-		t.Fatalf("Got reference count %d; want %d", len(references), 0)
+	if r := coordinator.imageRefCount[id]; r != 0 {
+		t.Fatalf("Got reference count %d; want %d", r, 0)
 	}
 
 	// Pull image again within delay
-	id, _ = coordinator.PullImage(image, nil, callerID)
+	id, _ = coordinator.PullImage(image, nil)
 
 	// Check the reference count
-	if references := coordinator.imageRefCount[id]; len(references) != 1 {
-		t.Fatalf("Got reference count %d; want %d", len(references), 1)
+	if r := coordinator.imageRefCount[id]; r != 1 {
+		t.Fatalf("Got reference count %d; want %d", r, 0)
 	}
 
 	// Check that only no delete happened
@@ -214,18 +211,17 @@ func TestDockerCoordinator_No_Cleanup(t *testing.T) {
 
 	// Create a coordinator
 	coordinator := NewDockerCoordinator(config)
-	callerID := structs.GenerateUUID()
 
 	// Pull image
-	id, _ := coordinator.PullImage(image, nil, callerID)
+	id, _ := coordinator.PullImage(image, nil)
 
 	// Check the reference count
-	if references := coordinator.imageRefCount[id]; len(references) != 0 {
-		t.Fatalf("Got reference count %d; want %d", len(references), 0)
+	if r := coordinator.imageRefCount[id]; r != 0 {
+		t.Fatalf("Got reference count %d; want %d", r, 10)
 	}
 
 	// Remove image
-	coordinator.RemoveImage(id, callerID)
+	coordinator.RemoveImage(id)
 
 	// Check that only no delete happened
 	if removes := mock.removed[id]; removes != 0 {

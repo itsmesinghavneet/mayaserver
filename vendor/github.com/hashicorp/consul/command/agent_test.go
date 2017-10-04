@@ -196,11 +196,8 @@ func TestReadCliConfig(t *testing.T) {
 		if config.SerfLanBindAddr != "4.3.2.2" {
 			t.Fatalf("expected -serf-lan-bind 4.3.2.2 got %s", config.SerfLanBindAddr)
 		}
-		expected := map[string]string{
-			"somekey": "somevalue",
-		}
-		if !reflect.DeepEqual(config.Meta, expected) {
-			t.Fatalf("bad: %v %v", config.Meta, expected)
+		if len(config.Meta) != 1 || config.Meta["somekey"] != "somevalue" {
+			t.Fatalf("expected somekey=somevalue, got %v", config.Meta)
 		}
 	}
 
@@ -216,11 +213,11 @@ func TestReadCliConfig(t *testing.T) {
 			ShutdownCh:  shutdownCh,
 			BaseCommand: baseCommand(cli.NewMockUi()),
 		}
-		config := cmd.readConfig()
 		expected := map[string]string{
 			"somekey":  "somevalue",
 			"otherkey": "othervalue",
 		}
+		config := cmd.readConfig()
 		if !reflect.DeepEqual(config.Meta, expected) {
 			t.Fatalf("bad: %v %v", config.Meta, expected)
 		}

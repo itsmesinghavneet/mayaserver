@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/consul/acl"
 	"github.com/hashicorp/consul/agent/structs"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/testrpc"
@@ -263,7 +262,7 @@ func TestSnapshot_ACLDeny(t *testing.T) {
 		var reply structs.SnapshotResponse
 		_, err := SnapshotRPC(s1.connPool, s1.config.Datacenter, s1.config.RPCAddr, false,
 			&args, bytes.NewReader([]byte("")), &reply)
-		if !acl.IsErrPermissionDenied(err) {
+		if err == nil || !strings.Contains(err.Error(), permissionDenied) {
 			t.Fatalf("err: %v", err)
 		}
 	}()
@@ -277,7 +276,7 @@ func TestSnapshot_ACLDeny(t *testing.T) {
 		var reply structs.SnapshotResponse
 		_, err := SnapshotRPC(s1.connPool, s1.config.Datacenter, s1.config.RPCAddr, false,
 			&args, bytes.NewReader([]byte("")), &reply)
-		if !acl.IsErrPermissionDenied(err) {
+		if err == nil || !strings.Contains(err.Error(), permissionDenied) {
 			t.Fatalf("err: %v", err)
 		}
 	}()

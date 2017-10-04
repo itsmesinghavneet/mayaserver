@@ -8,8 +8,7 @@
     "serviceAbbreviation":"WAF",
     "serviceFullName":"AWS WAF",
     "signatureVersion":"v4",
-    "targetPrefix":"AWSWAF_20150824",
-    "uid":"waf-2015-08-24"
+    "targetPrefix":"AWSWAF_20150824"
   },
   "operations":{
     "CreateByteMatchSet":{
@@ -41,22 +40,6 @@
         {"shape":"WAFStaleDataException"},
         {"shape":"WAFInternalErrorException"},
         {"shape":"WAFInvalidAccountException"},
-        {"shape":"WAFDisallowedNameException"},
-        {"shape":"WAFInvalidParameterException"},
-        {"shape":"WAFLimitsExceededException"}
-      ]
-    },
-    "CreateRateBasedRule":{
-      "name":"CreateRateBasedRule",
-      "http":{
-        "method":"POST",
-        "requestUri":"/"
-      },
-      "input":{"shape":"CreateRateBasedRuleRequest"},
-      "output":{"shape":"CreateRateBasedRuleResponse"},
-      "errors":[
-        {"shape":"WAFStaleDataException"},
-        {"shape":"WAFInternalErrorException"},
         {"shape":"WAFDisallowedNameException"},
         {"shape":"WAFInvalidParameterException"},
         {"shape":"WAFLimitsExceededException"}
@@ -129,23 +112,6 @@
         {"shape":"WAFLimitsExceededException"}
       ]
     },
-    "CreateXssMatchSet":{
-      "name":"CreateXssMatchSet",
-      "http":{
-        "method":"POST",
-        "requestUri":"/"
-      },
-      "input":{"shape":"CreateXssMatchSetRequest"},
-      "output":{"shape":"CreateXssMatchSetResponse"},
-      "errors":[
-        {"shape":"WAFDisallowedNameException"},
-        {"shape":"WAFInternalErrorException"},
-        {"shape":"WAFInvalidAccountException"},
-        {"shape":"WAFInvalidParameterException"},
-        {"shape":"WAFStaleDataException"},
-        {"shape":"WAFLimitsExceededException"}
-      ]
-    },
     "DeleteByteMatchSet":{
       "name":"DeleteByteMatchSet",
       "http":{
@@ -171,23 +137,6 @@
       },
       "input":{"shape":"DeleteIPSetRequest"},
       "output":{"shape":"DeleteIPSetResponse"},
-      "errors":[
-        {"shape":"WAFStaleDataException"},
-        {"shape":"WAFInternalErrorException"},
-        {"shape":"WAFInvalidAccountException"},
-        {"shape":"WAFNonexistentItemException"},
-        {"shape":"WAFReferencedItemException"},
-        {"shape":"WAFNonEmptyEntityException"}
-      ]
-    },
-    "DeleteRateBasedRule":{
-      "name":"DeleteRateBasedRule",
-      "http":{
-        "method":"POST",
-        "requestUri":"/"
-      },
-      "input":{"shape":"DeleteRateBasedRuleRequest"},
-      "output":{"shape":"DeleteRateBasedRuleResponse"},
       "errors":[
         {"shape":"WAFStaleDataException"},
         {"shape":"WAFInternalErrorException"},
@@ -265,23 +214,6 @@
         {"shape":"WAFNonEmptyEntityException"}
       ]
     },
-    "DeleteXssMatchSet":{
-      "name":"DeleteXssMatchSet",
-      "http":{
-        "method":"POST",
-        "requestUri":"/"
-      },
-      "input":{"shape":"DeleteXssMatchSetRequest"},
-      "output":{"shape":"DeleteXssMatchSetResponse"},
-      "errors":[
-        {"shape":"WAFInternalErrorException"},
-        {"shape":"WAFInvalidAccountException"},
-        {"shape":"WAFNonexistentItemException"},
-        {"shape":"WAFReferencedItemException"},
-        {"shape":"WAFStaleDataException"},
-        {"shape":"WAFNonEmptyEntityException"}
-      ]
-    },
     "GetByteMatchSet":{
       "name":"GetByteMatchSet",
       "http":{
@@ -333,35 +265,6 @@
         {"shape":"WAFInternalErrorException"},
         {"shape":"WAFInvalidAccountException"},
         {"shape":"WAFNonexistentItemException"}
-      ]
-    },
-    "GetRateBasedRule":{
-      "name":"GetRateBasedRule",
-      "http":{
-        "method":"POST",
-        "requestUri":"/"
-      },
-      "input":{"shape":"GetRateBasedRuleRequest"},
-      "output":{"shape":"GetRateBasedRuleResponse"},
-      "errors":[
-        {"shape":"WAFInternalErrorException"},
-        {"shape":"WAFInvalidAccountException"},
-        {"shape":"WAFNonexistentItemException"}
-      ]
-    },
-    "GetRateBasedRuleManagedKeys":{
-      "name":"GetRateBasedRuleManagedKeys",
-      "http":{
-        "method":"POST",
-        "requestUri":"/"
-      },
-      "input":{"shape":"GetRateBasedRuleManagedKeysRequest"},
-      "output":{"shape":"GetRateBasedRuleManagedKeysResponse"},
-      "errors":[
-        {"shape":"WAFInternalErrorException"},
-        {"shape":"WAFInvalidAccountException"},
-        {"shape":"WAFNonexistentItemException"},
-        {"shape":"WAFInvalidParameterException"}
       ]
     },
     "GetRule":{
@@ -433,20 +336,6 @@
         {"shape":"WAFNonexistentItemException"}
       ]
     },
-    "GetXssMatchSet":{
-      "name":"GetXssMatchSet",
-      "http":{
-        "method":"POST",
-        "requestUri":"/"
-      },
-      "input":{"shape":"GetXssMatchSetRequest"},
-      "output":{"shape":"GetXssMatchSetResponse"},
-      "errors":[
-        {"shape":"WAFInternalErrorException"},
-        {"shape":"WAFInvalidAccountException"},
-        {"shape":"WAFNonexistentItemException"}
-      ]
-    },
     "ListByteMatchSets":{
       "name":"ListByteMatchSets",
       "http":{
@@ -468,19 +357,6 @@
       },
       "input":{"shape":"ListIPSetsRequest"},
       "output":{"shape":"ListIPSetsResponse"},
-      "errors":[
-        {"shape":"WAFInternalErrorException"},
-        {"shape":"WAFInvalidAccountException"}
-      ]
-    },
-    "ListRateBasedRules":{
-      "name":"ListRateBasedRules",
-      "http":{
-        "method":"POST",
-        "requestUri":"/"
-      },
-      "input":{"shape":"ListRateBasedRulesRequest"},
-      "output":{"shape":"ListRateBasedRulesResponse"},
       "errors":[
         {"shape":"WAFInternalErrorException"},
         {"shape":"WAFInvalidAccountException"}
@@ -538,19 +414,6 @@
         {"shape":"WAFInvalidAccountException"}
       ]
     },
-    "ListXssMatchSets":{
-      "name":"ListXssMatchSets",
-      "http":{
-        "method":"POST",
-        "requestUri":"/"
-      },
-      "input":{"shape":"ListXssMatchSetsRequest"},
-      "output":{"shape":"ListXssMatchSetsResponse"},
-      "errors":[
-        {"shape":"WAFInternalErrorException"},
-        {"shape":"WAFInvalidAccountException"}
-      ]
-    },
     "UpdateByteMatchSet":{
       "name":"UpdateByteMatchSet",
       "http":{
@@ -578,26 +441,6 @@
       },
       "input":{"shape":"UpdateIPSetRequest"},
       "output":{"shape":"UpdateIPSetResponse"},
-      "errors":[
-        {"shape":"WAFStaleDataException"},
-        {"shape":"WAFInternalErrorException"},
-        {"shape":"WAFInvalidAccountException"},
-        {"shape":"WAFInvalidOperationException"},
-        {"shape":"WAFInvalidParameterException"},
-        {"shape":"WAFNonexistentContainerException"},
-        {"shape":"WAFNonexistentItemException"},
-        {"shape":"WAFReferencedItemException"},
-        {"shape":"WAFLimitsExceededException"}
-      ]
-    },
-    "UpdateRateBasedRule":{
-      "name":"UpdateRateBasedRule",
-      "http":{
-        "method":"POST",
-        "requestUri":"/"
-      },
-      "input":{"shape":"UpdateRateBasedRuleRequest"},
-      "output":{"shape":"UpdateRateBasedRuleResponse"},
       "errors":[
         {"shape":"WAFStaleDataException"},
         {"shape":"WAFInternalErrorException"},
@@ -688,25 +531,6 @@
         {"shape":"WAFReferencedItemException"},
         {"shape":"WAFLimitsExceededException"}
       ]
-    },
-    "UpdateXssMatchSet":{
-      "name":"UpdateXssMatchSet",
-      "http":{
-        "method":"POST",
-        "requestUri":"/"
-      },
-      "input":{"shape":"UpdateXssMatchSetRequest"},
-      "output":{"shape":"UpdateXssMatchSetResponse"},
-      "errors":[
-        {"shape":"WAFInternalErrorException"},
-        {"shape":"WAFInvalidAccountException"},
-        {"shape":"WAFInvalidOperationException"},
-        {"shape":"WAFInvalidParameterException"},
-        {"shape":"WAFNonexistentContainerException"},
-        {"shape":"WAFNonexistentItemException"},
-        {"shape":"WAFStaleDataException"},
-        {"shape":"WAFLimitsExceededException"}
-      ]
     }
   },
   "shapes":{
@@ -721,8 +545,7 @@
       "members":{
         "Priority":{"shape":"RulePriority"},
         "RuleId":{"shape":"ResourceId"},
-        "Action":{"shape":"WafAction"},
-        "Type":{"shape":"WafRuleType"}
+        "Action":{"shape":"WafAction"}
       }
     },
     "ActivatedRules":{
@@ -798,10 +621,7 @@
         "DELETE"
       ]
     },
-    "ChangeToken":{
-      "type":"string",
-      "min":1
-    },
+    "ChangeToken":{"type":"string"},
     "ChangeTokenStatus":{
       "type":"string",
       "enum":[
@@ -855,30 +675,6 @@
       "type":"structure",
       "members":{
         "IPSet":{"shape":"IPSet"},
-        "ChangeToken":{"shape":"ChangeToken"}
-      }
-    },
-    "CreateRateBasedRuleRequest":{
-      "type":"structure",
-      "required":[
-        "Name",
-        "MetricName",
-        "RateKey",
-        "RateLimit",
-        "ChangeToken"
-      ],
-      "members":{
-        "Name":{"shape":"ResourceName"},
-        "MetricName":{"shape":"MetricName"},
-        "RateKey":{"shape":"RateKey"},
-        "RateLimit":{"shape":"RateLimit"},
-        "ChangeToken":{"shape":"ChangeToken"}
-      }
-    },
-    "CreateRateBasedRuleResponse":{
-      "type":"structure",
-      "members":{
-        "Rule":{"shape":"RateBasedRule"},
         "ChangeToken":{"shape":"ChangeToken"}
       }
     },
@@ -960,24 +756,6 @@
         "ChangeToken":{"shape":"ChangeToken"}
       }
     },
-    "CreateXssMatchSetRequest":{
-      "type":"structure",
-      "required":[
-        "Name",
-        "ChangeToken"
-      ],
-      "members":{
-        "Name":{"shape":"ResourceName"},
-        "ChangeToken":{"shape":"ChangeToken"}
-      }
-    },
-    "CreateXssMatchSetResponse":{
-      "type":"structure",
-      "members":{
-        "XssMatchSet":{"shape":"XssMatchSet"},
-        "ChangeToken":{"shape":"ChangeToken"}
-      }
-    },
     "DeleteByteMatchSetRequest":{
       "type":"structure",
       "required":[
@@ -1007,23 +785,6 @@
       }
     },
     "DeleteIPSetResponse":{
-      "type":"structure",
-      "members":{
-        "ChangeToken":{"shape":"ChangeToken"}
-      }
-    },
-    "DeleteRateBasedRuleRequest":{
-      "type":"structure",
-      "required":[
-        "RuleId",
-        "ChangeToken"
-      ],
-      "members":{
-        "RuleId":{"shape":"ResourceId"},
-        "ChangeToken":{"shape":"ChangeToken"}
-      }
-    },
-    "DeleteRateBasedRuleResponse":{
       "type":"structure",
       "members":{
         "ChangeToken":{"shape":"ChangeToken"}
@@ -1097,23 +858,6 @@
         "ChangeToken":{"shape":"ChangeToken"}
       }
     },
-    "DeleteXssMatchSetRequest":{
-      "type":"structure",
-      "required":[
-        "XssMatchSetId",
-        "ChangeToken"
-      ],
-      "members":{
-        "XssMatchSetId":{"shape":"ResourceId"},
-        "ChangeToken":{"shape":"ChangeToken"}
-      }
-    },
-    "DeleteXssMatchSetResponse":{
-      "type":"structure",
-      "members":{
-        "ChangeToken":{"shape":"ChangeToken"}
-      }
-    },
     "FieldToMatch":{
       "type":"structure",
       "required":["Type"],
@@ -1172,34 +916,6 @@
         "IPSet":{"shape":"IPSet"}
       }
     },
-    "GetRateBasedRuleManagedKeysRequest":{
-      "type":"structure",
-      "required":["RuleId"],
-      "members":{
-        "RuleId":{"shape":"ResourceId"},
-        "NextMarker":{"shape":"NextMarker"}
-      }
-    },
-    "GetRateBasedRuleManagedKeysResponse":{
-      "type":"structure",
-      "members":{
-        "ManagedKeys":{"shape":"ManagedKeys"},
-        "NextMarker":{"shape":"NextMarker"}
-      }
-    },
-    "GetRateBasedRuleRequest":{
-      "type":"structure",
-      "required":["RuleId"],
-      "members":{
-        "RuleId":{"shape":"ResourceId"}
-      }
-    },
-    "GetRateBasedRuleResponse":{
-      "type":"structure",
-      "members":{
-        "Rule":{"shape":"RateBasedRule"}
-      }
-    },
     "GetRuleRequest":{
       "type":"structure",
       "required":["RuleId"],
@@ -1213,11 +929,6 @@
         "Rule":{"shape":"Rule"}
       }
     },
-    "GetSampledRequestsMaxItems":{
-      "type":"long",
-      "max":500,
-      "min":1
-    },
     "GetSampledRequestsRequest":{
       "type":"structure",
       "required":[
@@ -1230,7 +941,7 @@
         "WebAclId":{"shape":"ResourceId"},
         "RuleId":{"shape":"ResourceId"},
         "TimeWindow":{"shape":"TimeWindow"},
-        "MaxItems":{"shape":"GetSampledRequestsMaxItems"}
+        "MaxItems":{"shape":"ListMaxItems"}
       }
     },
     "GetSampledRequestsResponse":{
@@ -1278,19 +989,6 @@
       "type":"structure",
       "members":{
         "WebACL":{"shape":"WebACL"}
-      }
-    },
-    "GetXssMatchSetRequest":{
-      "type":"structure",
-      "required":["XssMatchSetId"],
-      "members":{
-        "XssMatchSetId":{"shape":"ResourceId"}
-      }
-    },
-    "GetXssMatchSetResponse":{
-      "type":"structure",
-      "members":{
-        "XssMatchSet":{"shape":"XssMatchSet"}
       }
     },
     "HTTPHeader":{
@@ -1344,10 +1042,7 @@
     },
     "IPSetDescriptorType":{
       "type":"string",
-      "enum":[
-        "IPV4",
-        "IPV6"
-      ]
+      "enum":["IPV4"]
     },
     "IPSetDescriptorValue":{"type":"string"},
     "IPSetDescriptors":{
@@ -1387,6 +1082,7 @@
     "IPString":{"type":"string"},
     "ListByteMatchSetsRequest":{
       "type":"structure",
+      "required":["Limit"],
       "members":{
         "NextMarker":{"shape":"NextMarker"},
         "Limit":{"shape":"PaginationLimit"}
@@ -1401,6 +1097,7 @@
     },
     "ListIPSetsRequest":{
       "type":"structure",
+      "required":["Limit"],
       "members":{
         "NextMarker":{"shape":"NextMarker"},
         "Limit":{"shape":"PaginationLimit"}
@@ -1413,22 +1110,14 @@
         "IPSets":{"shape":"IPSetSummaries"}
       }
     },
-    "ListRateBasedRulesRequest":{
-      "type":"structure",
-      "members":{
-        "NextMarker":{"shape":"NextMarker"},
-        "Limit":{"shape":"PaginationLimit"}
-      }
-    },
-    "ListRateBasedRulesResponse":{
-      "type":"structure",
-      "members":{
-        "NextMarker":{"shape":"NextMarker"},
-        "Rules":{"shape":"RuleSummaries"}
-      }
+    "ListMaxItems":{
+      "type":"long",
+      "max":100,
+      "min":1
     },
     "ListRulesRequest":{
       "type":"structure",
+      "required":["Limit"],
       "members":{
         "NextMarker":{"shape":"NextMarker"},
         "Limit":{"shape":"PaginationLimit"}
@@ -1443,6 +1132,7 @@
     },
     "ListSizeConstraintSetsRequest":{
       "type":"structure",
+      "required":["Limit"],
       "members":{
         "NextMarker":{"shape":"NextMarker"},
         "Limit":{"shape":"PaginationLimit"}
@@ -1457,6 +1147,7 @@
     },
     "ListSqlInjectionMatchSetsRequest":{
       "type":"structure",
+      "required":["Limit"],
       "members":{
         "NextMarker":{"shape":"NextMarker"},
         "Limit":{"shape":"PaginationLimit"}
@@ -1471,6 +1162,7 @@
     },
     "ListWebACLsRequest":{
       "type":"structure",
+      "required":["Limit"],
       "members":{
         "NextMarker":{"shape":"NextMarker"},
         "Limit":{"shape":"PaginationLimit"}
@@ -1482,25 +1174,6 @@
         "NextMarker":{"shape":"NextMarker"},
         "WebACLs":{"shape":"WebACLSummaries"}
       }
-    },
-    "ListXssMatchSetsRequest":{
-      "type":"structure",
-      "members":{
-        "NextMarker":{"shape":"NextMarker"},
-        "Limit":{"shape":"PaginationLimit"}
-      }
-    },
-    "ListXssMatchSetsResponse":{
-      "type":"structure",
-      "members":{
-        "NextMarker":{"shape":"NextMarker"},
-        "XssMatchSets":{"shape":"XssMatchSetSummaries"}
-      }
-    },
-    "ManagedKey":{"type":"string"},
-    "ManagedKeys":{
-      "type":"list",
-      "member":{"shape":"ManagedKey"}
     },
     "MatchFieldData":{"type":"string"},
     "MatchFieldType":{
@@ -1522,7 +1195,7 @@
     "PaginationLimit":{
       "type":"integer",
       "max":100,
-      "min":0
+      "min":1
     },
     "ParameterExceptionField":{
       "type":"string",
@@ -1535,10 +1208,7 @@
         "SQL_INJECTION_MATCH_FIELD_TYPE",
         "BYTE_MATCH_TEXT_TRANSFORMATION",
         "BYTE_MATCH_POSITIONAL_CONSTRAINT",
-        "SIZE_CONSTRAINT_COMPARISON_OPERATOR",
-        "RATE_KEY",
-        "RULE_TYPE",
-        "NEXT_MARKER"
+        "SIZE_CONSTRAINT_COMPARISON_OPERATOR"
       ]
     },
     "ParameterExceptionParameter":{
@@ -1582,38 +1252,12 @@
         "IPMatch",
         "ByteMatch",
         "SqlInjectionMatch",
-        "SizeConstraint",
-        "XssMatch"
+        "SizeConstraint"
       ]
     },
     "Predicates":{
       "type":"list",
       "member":{"shape":"Predicate"}
-    },
-    "RateBasedRule":{
-      "type":"structure",
-      "required":[
-        "RuleId",
-        "MatchPredicates",
-        "RateKey",
-        "RateLimit"
-      ],
-      "members":{
-        "RuleId":{"shape":"ResourceId"},
-        "Name":{"shape":"ResourceName"},
-        "MetricName":{"shape":"MetricName"},
-        "MatchPredicates":{"shape":"Predicates"},
-        "RateKey":{"shape":"RateKey"},
-        "RateLimit":{"shape":"RateLimit"}
-      }
-    },
-    "RateKey":{
-      "type":"string",
-      "enum":["IP"]
-    },
-    "RateLimit":{
-      "type":"long",
-      "min":2000
     },
     "ResourceId":{
       "type":"string",
@@ -1692,7 +1336,6 @@
     },
     "Size":{
       "type":"long",
-      "max":21474836480,
       "min":0
     },
     "SizeConstraint":{
@@ -1875,27 +1518,6 @@
         "ChangeToken":{"shape":"ChangeToken"}
       }
     },
-    "UpdateRateBasedRuleRequest":{
-      "type":"structure",
-      "required":[
-        "RuleId",
-        "ChangeToken",
-        "Updates",
-        "RateLimit"
-      ],
-      "members":{
-        "RuleId":{"shape":"ResourceId"},
-        "ChangeToken":{"shape":"ChangeToken"},
-        "Updates":{"shape":"RuleUpdates"},
-        "RateLimit":{"shape":"RateLimit"}
-      }
-    },
-    "UpdateRateBasedRuleResponse":{
-      "type":"structure",
-      "members":{
-        "ChangeToken":{"shape":"ChangeToken"}
-      }
-    },
     "UpdateRuleRequest":{
       "type":"structure",
       "required":[
@@ -1967,25 +1589,6 @@
       }
     },
     "UpdateWebACLResponse":{
-      "type":"structure",
-      "members":{
-        "ChangeToken":{"shape":"ChangeToken"}
-      }
-    },
-    "UpdateXssMatchSetRequest":{
-      "type":"structure",
-      "required":[
-        "XssMatchSetId",
-        "ChangeToken",
-        "Updates"
-      ],
-      "members":{
-        "XssMatchSetId":{"shape":"ResourceId"},
-        "ChangeToken":{"shape":"ChangeToken"},
-        "Updates":{"shape":"XssMatchSetUpdates"}
-      }
-    },
-    "UpdateXssMatchSetResponse":{
       "type":"structure",
       "members":{
         "ChangeToken":{"shape":"ChangeToken"}
@@ -2085,13 +1688,6 @@
         "COUNT"
       ]
     },
-    "WafRuleType":{
-      "type":"string",
-      "enum":[
-        "REGULAR",
-        "RATE_BASED"
-      ]
-    },
     "WebACL":{
       "type":"structure",
       "required":[
@@ -2136,63 +1732,6 @@
     "WebACLUpdates":{
       "type":"list",
       "member":{"shape":"WebACLUpdate"}
-    },
-    "XssMatchSet":{
-      "type":"structure",
-      "required":[
-        "XssMatchSetId",
-        "XssMatchTuples"
-      ],
-      "members":{
-        "XssMatchSetId":{"shape":"ResourceId"},
-        "Name":{"shape":"ResourceName"},
-        "XssMatchTuples":{"shape":"XssMatchTuples"}
-      }
-    },
-    "XssMatchSetSummaries":{
-      "type":"list",
-      "member":{"shape":"XssMatchSetSummary"}
-    },
-    "XssMatchSetSummary":{
-      "type":"structure",
-      "required":[
-        "XssMatchSetId",
-        "Name"
-      ],
-      "members":{
-        "XssMatchSetId":{"shape":"ResourceId"},
-        "Name":{"shape":"ResourceName"}
-      }
-    },
-    "XssMatchSetUpdate":{
-      "type":"structure",
-      "required":[
-        "Action",
-        "XssMatchTuple"
-      ],
-      "members":{
-        "Action":{"shape":"ChangeAction"},
-        "XssMatchTuple":{"shape":"XssMatchTuple"}
-      }
-    },
-    "XssMatchSetUpdates":{
-      "type":"list",
-      "member":{"shape":"XssMatchSetUpdate"}
-    },
-    "XssMatchTuple":{
-      "type":"structure",
-      "required":[
-        "FieldToMatch",
-        "TextTransformation"
-      ],
-      "members":{
-        "FieldToMatch":{"shape":"FieldToMatch"},
-        "TextTransformation":{"shape":"TextTransformation"}
-      }
-    },
-    "XssMatchTuples":{
-      "type":"list",
-      "member":{"shape":"XssMatchTuple"}
     },
     "errorMessage":{"type":"string"}
   }

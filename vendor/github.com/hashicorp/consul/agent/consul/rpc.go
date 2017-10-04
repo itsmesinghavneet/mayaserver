@@ -46,10 +46,10 @@ const (
 )
 
 // listen is used to listen for incoming RPC connections
-func (s *Server) listen(listener net.Listener) {
+func (s *Server) listen() {
 	for {
 		// Accept a connection
-		conn, err := listener.Accept()
+		conn, err := s.Listener.Accept()
 		if err != nil {
 			if s.shutdown {
 				return
@@ -238,7 +238,9 @@ func (s *Server) getLeader() (bool, *metadata.Server) {
 	}
 
 	// Lookup the server
-	server := s.serverLookup.Server(leader)
+	s.localLock.RLock()
+	server := s.localConsuls[leader]
+	s.localLock.RUnlock()
 
 	// Server could be nil
 	return false, server

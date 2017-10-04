@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/armon/go-metrics"
-	"github.com/hashicorp/consul/acl"
 	"github.com/hashicorp/consul/agent/structs"
 	"github.com/mitchellh/mapstructure"
 )
@@ -207,7 +206,7 @@ func (s *HTTPServer) wrap(handler func(resp http.ResponseWriter, req *http.Reque
 		formVals, err := url.ParseQuery(req.URL.RawQuery)
 		if err != nil {
 			s.agent.logger.Printf("[ERR] http: Failed to decode query: %s from=%s", err, req.RemoteAddr)
-			resp.WriteHeader(http.StatusInternalServerError)
+			resp.WriteHeader(http.StatusInternalServerError) // 500
 			return
 		}
 		logURL := req.URL.String()
@@ -232,17 +231,13 @@ func (s *HTTPServer) wrap(handler func(resp http.ResponseWriter, req *http.Reque
 
 		handleErr := func(err error) {
 			s.agent.logger.Printf("[ERR] http: Request %s %v, error: %v from=%s", req.Method, logURL, err, req.RemoteAddr)
-			switch {
-			case acl.IsErrPermissionDenied(err) || acl.IsErrNotFound(err):
-				resp.WriteHeader(http.StatusForbidden)
-				fmt.Fprint(resp, err.Error())
-			case structs.IsErrRPCRateExceeded(err):
-				resp.WriteHeader(http.StatusTooManyRequests)
-				fmt.Fprint(resp, err.Error())
-			default:
-				resp.WriteHeader(http.StatusInternalServerError)
-				fmt.Fprint(resp, err.Error())
+			code := http.StatusInternalServerError // 500
+			errMsg := err.Error()
+			if strings.Contains(errMsg, "Permission denied") || strings.Contains(errMsg, "ACL not found") {
+				code = http.StatusForbidden // 403
 			}
+			resp.WriteHeader(code)
+			fmt.Fprint(resp, errMsg)
 		}
 
 		// Invoke the handler
@@ -297,7 +292,7 @@ func (s *HTTPServer) IsUIEnabled() bool {
 func (s *HTTPServer) Index(resp http.ResponseWriter, req *http.Request) {
 	// Check if this is a non-index path
 	if req.URL.Path != "/" {
-		resp.WriteHeader(http.StatusNotFound)
+		resp.WriteHeader(http.StatusNotFound) // 404
 		return
 	}
 
@@ -381,7 +376,7 @@ func parseWait(resp http.ResponseWriter, req *http.Request, b *structs.QueryOpti
 	if wait := query.Get("wait"); wait != "" {
 		dur, err := time.ParseDuration(wait)
 		if err != nil {
-			resp.WriteHeader(http.StatusBadRequest)
+			resp.WriteHeader(http.StatusBadRequest) // 400
 			fmt.Fprint(resp, "Invalid wait time")
 			return true
 		}
@@ -390,7 +385,7 @@ func parseWait(resp http.ResponseWriter, req *http.Request, b *structs.QueryOpti
 	if idx := query.Get("index"); idx != "" {
 		index, err := strconv.ParseUint(idx, 10, 64)
 		if err != nil {
-			resp.WriteHeader(http.StatusBadRequest)
+			resp.WriteHeader(http.StatusBadRequest) // 400
 			fmt.Fprint(resp, "Invalid index")
 			return true
 		}
@@ -410,7 +405,7 @@ func parseConsistency(resp http.ResponseWriter, req *http.Request, b *structs.Qu
 		b.RequireConsistent = true
 	}
 	if b.AllowStale && b.RequireConsistent {
-		resp.WriteHeader(http.StatusBadRequest)
+		resp.WriteHeader(http.StatusBadRequest) // 400
 		fmt.Fprint(resp, "Cannot specify ?stale with ?consistent, conflicting semantics.")
 		return true
 	}

@@ -123,6 +123,11 @@ type Server struct {
 	// strong consistency.
 	fsm *consulFSM
 
+	// localConsuls is used to track the known consuls
+	// in the local datacenter. Used to do leader forwarding.
+	localConsuls map[raft.ServerAddress]*metadata.Server
+	localLock    sync.RWMutex
+
 	// Logger uses the provided LogOutput
 	logger *log.Logger
 
@@ -162,16 +167,9 @@ type Server struct {
 	// which contains all the DC nodes
 	serfLAN *serf.Serf
 
-	// segmentLAN maps segment names to their Serf cluster
-	segmentLAN map[string]*serf.Serf
-
 	// serfWAN is the Serf cluster maintained between DC's
 	// which SHOULD only consist of Consul servers
 	serfWAN *serf.Serf
-
-	// serverLookup tracks server consuls in the local datacenter.
-	// Used to do leader forwarding and provide fast lookup by server id and address
-	serverLookup *ServerLookup
 
 	// floodLock controls access to floodCh.
 	floodLock sync.RWMutex
@@ -297,16 +295,15 @@ func NewServerLogger(config *Config, logger *log.Logger, tokens *token.Store) (*
 		connPool:              connPool,
 		eventChLAN:            make(chan serf.Event, 256),
 		eventChWAN:            make(chan serf.Event, 256),
+		localConsuls:          make(map[raft.ServerAddress]*metadata.Server),
 		logger:                logger,
 		reconcileCh:           make(chan serf.Member, 32),
 		router:                router.NewRouter(logger, config.Datacenter),
 		rpcServer:             rpc.NewServer(),
 		rpcTLS:                incomingTLS,
 		reassertLeaderCh:      make(chan chan error),
-		segmentLAN:            make(map[string]*serf.Serf, len(config.Segments)),
 		sessionTimers:         NewSessionTimers(),
 		tombstoneGC:           gc,
-		serverLookup:          NewServerLookup(),
 		shutdownCh:            shutdownCh,
 	}
 
@@ -340,13 +337,6 @@ func NewServerLogger(config *Config, logger *log.Logger, tokens *token.Store) (*
 		return nil, fmt.Errorf("Failed to start RPC layer: %v", err)
 	}
 
-	// Initialize any extra RPC listeners for segments.
-	segmentListeners, err := s.setupSegmentRPC()
-	if err != nil {
-		s.Shutdown()
-		return nil, fmt.Errorf("Failed to start segment RPC layer: %v", err)
-	}
-
 	// Initialize the Raft server.
 	if err := s.setupRaft(); err != nil {
 		s.Shutdown()
@@ -364,7 +354,7 @@ func NewServerLogger(config *Config, logger *log.Logger, tokens *token.Store) (*
 
 	// Initialize the WAN Serf.
 	serfBindPortWAN := config.SerfWANConfig.MemberlistConfig.BindPort
-	s.serfWAN, err = s.setupSerf(config.SerfWANConfig, s.eventChWAN, serfWANSnapshot, true, serfBindPortWAN, "", s.Listener)
+	s.serfWAN, err = s.setupSerf(config.SerfWANConfig, s.eventChWAN, serfWANSnapshot, true, serfBindPortWAN)
 	if err != nil {
 		s.Shutdown()
 		return nil, fmt.Errorf("Failed to start WAN Serf: %v", err)
@@ -379,23 +369,13 @@ func NewServerLogger(config *Config, logger *log.Logger, tokens *token.Store) (*
 		s.logger.Printf("[INFO] agent: Serf WAN TCP bound to port %d", serfBindPortWAN)
 	}
 
-	// Initialize the LAN segments before the default LAN Serf so we have
-	// updated port information to publish there.
-	if err := s.setupSegments(config, serfBindPortWAN, segmentListeners); err != nil {
-		s.Shutdown()
-		return nil, fmt.Errorf("Failed to setup network segments: %v", err)
-	}
-
-	// Initialize the LAN Serf for the default network segment.
-	s.serfLAN, err = s.setupSerf(config.SerfLANConfig, s.eventChLAN, serfLANSnapshot, false, serfBindPortWAN, "", s.Listener)
+	// Initialize the LAN Serf.
+	s.serfLAN, err = s.setupSerf(config.SerfLANConfig, s.eventChLAN, serfLANSnapshot, false, serfBindPortWAN)
 	if err != nil {
 		s.Shutdown()
 		return nil, fmt.Errorf("Failed to start LAN Serf: %v", err)
 	}
 	go s.lanEventHandler()
-
-	// Start the flooders after the LAN event handler is wired up.
-	s.floodSegments(config)
 
 	// Add a "static route" to the WAN Serf and hook it up to Serf events.
 	if err := s.router.AddArea(types.AreaWAN, s.serfWAN, s.connPool, s.config.VerifyOutgoing); err != nil {
@@ -411,7 +391,7 @@ func NewServerLogger(config *Config, logger *log.Logger, tokens *token.Store) (*
 		}
 		return 0, false
 	}
-	go s.Flood(nil, portFn, s.serfWAN)
+	go s.Flood(portFn, s.serfWAN)
 
 	// Start monitoring leadership. This must happen after Serf is set up
 	// since it can fire events when leadership is obtained.
@@ -423,12 +403,7 @@ func NewServerLogger(config *Config, logger *log.Logger, tokens *token.Store) (*
 	}
 
 	// Start listening for RPC requests.
-	go s.listen(s.Listener)
-
-	// Start listeners for any segments with separate RPC listeners.
-	for _, listener := range segmentListeners {
-		go s.listen(listener)
-	}
+	go s.listen()
 
 	// Start the metrics handlers.
 	go s.sessionStats()
@@ -437,6 +412,67 @@ func NewServerLogger(config *Config, logger *log.Logger, tokens *token.Store) (*
 	go s.serverHealthLoop()
 
 	return s, nil
+}
+
+// setupSerf is used to setup and initialize a Serf
+func (s *Server) setupSerf(conf *serf.Config, ch chan serf.Event, path string, wan bool, wanPort int) (*serf.Serf, error) {
+	addr := s.Listener.Addr().(*net.TCPAddr)
+	conf.Init()
+	if wan {
+		conf.NodeName = fmt.Sprintf("%s.%s", s.config.NodeName, s.config.Datacenter)
+	} else {
+		conf.NodeName = s.config.NodeName
+		conf.Tags["wan_join_port"] = fmt.Sprintf("%d", wanPort)
+	}
+	conf.Tags["role"] = "consul"
+	conf.Tags["dc"] = s.config.Datacenter
+	conf.Tags["id"] = string(s.config.NodeID)
+	conf.Tags["vsn"] = fmt.Sprintf("%d", s.config.ProtocolVersion)
+	conf.Tags["vsn_min"] = fmt.Sprintf("%d", ProtocolVersionMin)
+	conf.Tags["vsn_max"] = fmt.Sprintf("%d", ProtocolVersionMax)
+	conf.Tags["raft_vsn"] = fmt.Sprintf("%d", s.config.RaftConfig.ProtocolVersion)
+	conf.Tags["build"] = s.config.Build
+	conf.Tags["port"] = fmt.Sprintf("%d", addr.Port)
+	if s.config.Bootstrap {
+		conf.Tags["bootstrap"] = "1"
+	}
+	if s.config.BootstrapExpect != 0 {
+		conf.Tags["expect"] = fmt.Sprintf("%d", s.config.BootstrapExpect)
+	}
+	if s.config.NonVoter {
+		conf.Tags["nonvoter"] = "1"
+	}
+	if s.config.UseTLS {
+		conf.Tags["use_tls"] = "1"
+	}
+	conf.MemberlistConfig.LogOutput = s.config.LogOutput
+	conf.LogOutput = s.config.LogOutput
+	conf.Logger = s.logger
+	conf.EventCh = ch
+	if !s.config.DevMode {
+		conf.SnapshotPath = filepath.Join(s.config.DataDir, path)
+	}
+	conf.ProtocolVersion = protocolVersionMap[s.config.ProtocolVersion]
+	conf.RejoinAfterLeave = s.config.RejoinAfterLeave
+	if wan {
+		conf.Merge = &wanMergeDelegate{}
+	} else {
+		conf.Merge = &lanMergeDelegate{
+			dc:       s.config.Datacenter,
+			nodeID:   s.config.NodeID,
+			nodeName: s.config.NodeName,
+		}
+	}
+
+	// Until Consul supports this fully, we disable automatic resolution.
+	// When enabled, the Serf gossip may just turn off if we are the minority
+	// node which is rather unexpected.
+	conf.EnableNameConflictResolution = false
+	if err := lib.EnsurePath(conf.SnapshotPath, false); err != nil {
+		return nil, err
+	}
+
+	return serf.Create(conf)
 }
 
 // setupRaft is used to setup and initialize Raft
@@ -457,20 +493,8 @@ func (s *Server) setupRaft() error {
 		return err
 	}
 
-	var serverAddressProvider raft.ServerAddressProvider = nil
-	if s.config.RaftConfig.ProtocolVersion >= 3 { //ServerAddressProvider needs server ids to work correctly, which is only supported in protocol version 3 or higher
-		serverAddressProvider = s.serverLookup
-	}
-
 	// Create a transport layer.
-	transConfig := &raft.NetworkTransportConfig{
-		Stream:                s.raftLayer,
-		MaxPool:               3,
-		Timeout:               10 * time.Second,
-		ServerAddressProvider: serverAddressProvider,
-	}
-
-	trans := raft.NewNetworkTransportWithConfig(transConfig)
+	trans := raft.NewNetworkTransport(s.raftLayer, 3, 10*time.Second, s.config.LogOutput)
 	s.raftTransport = trans
 
 	// Make sure we set the LogOutput.
@@ -670,9 +694,11 @@ func (s *Server) setupRPC(tlsWrap tlsutil.DCWrapper) error {
 			return true
 		}
 
-		server := s.serverLookup.Server(address)
+		s.localLock.RLock()
+		server, ok := s.localConsuls[address]
+		s.localLock.RUnlock()
 
-		if server == nil {
+		if !ok {
 			return false
 		}
 
@@ -901,17 +927,6 @@ func (s *Server) Encrypted() bool {
 	return s.serfLAN.EncryptionEnabled() && s.serfWAN.EncryptionEnabled()
 }
 
-// LANSegments returns a map of LAN segments by name
-func (s *Server) LANSegments() map[string]*serf.Serf {
-	segments := make(map[string]*serf.Serf, len(s.segmentLAN)+1)
-	segments[""] = s.serfLAN
-	for name, segment := range s.segmentLAN {
-		segments[name] = segment
-	}
-
-	return segments
-}
-
 // inmemCodec is used to do an RPC call without going over a network
 type inmemCodec struct {
 	method string
@@ -1023,21 +1038,8 @@ func (s *Server) Stats() map[string]map[string]string {
 }
 
 // GetLANCoordinate returns the coordinate of the server in the LAN gossip pool.
-func (s *Server) GetLANCoordinate() (lib.CoordinateSet, error) {
-	lan, err := s.serfLAN.GetCoordinate()
-	if err != nil {
-		return nil, err
-	}
-
-	cs := lib.CoordinateSet{"": lan}
-	for name, segment := range s.segmentLAN {
-		c, err := segment.GetCoordinate()
-		if err != nil {
-			return nil, err
-		}
-		cs[name] = c
-	}
-	return cs, nil
+func (s *Server) GetLANCoordinate() (*coordinate.Coordinate, error) {
+	return s.serfLAN.GetCoordinate()
 }
 
 // GetWANCoordinate returns the coordinate of the server in the WAN gossip pool.

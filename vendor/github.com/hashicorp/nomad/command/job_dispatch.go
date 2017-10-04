@@ -125,20 +125,13 @@ func (c *JobDispatchCommand) Run(args []string) int {
 		return 1
 	}
 
-	// See if an evaluation was created. If the job is periodic there will be no
-	// eval.
-	evalCreated := resp.EvalID != ""
-
 	basic := []string{
 		fmt.Sprintf("Dispatched Job ID|%s", resp.DispatchedJobID),
-	}
-	if evalCreated {
-		basic = append(basic, fmt.Sprintf("Evaluation ID|%s", limit(resp.EvalID, length)))
+		fmt.Sprintf("Evaluation ID|%s", limit(resp.EvalID, length)),
 	}
 	c.Ui.Output(formatKV(basic))
 
-	// Nothing to do
-	if detach || !evalCreated {
+	if detach {
 		return 0
 	}
 

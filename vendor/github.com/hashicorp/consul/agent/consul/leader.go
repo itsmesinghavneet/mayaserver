@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/armon/go-metrics"
-	"github.com/hashicorp/consul/acl"
 	"github.com/hashicorp/consul/agent/metadata"
 	"github.com/hashicorp/consul/agent/structs"
 	"github.com/hashicorp/consul/api"
@@ -63,10 +63,8 @@ func (s *Server) monitorLeadership() {
 func (s *Server) leaderLoop(stopCh chan struct{}) {
 	// Fire a user event indicating a new leader
 	payload := []byte(s.config.NodeName)
-	for name, segment := range s.LANSegments() {
-		if err := segment.UserEvent(newLeaderEvent, payload, false); err != nil {
-			s.logger.Printf("[WARN] consul: failed to broadcast new leader event on segment %q: %v", name, err)
-		}
+	if err := s.serfLAN.UserEvent(newLeaderEvent, payload, false); err != nil {
+		s.logger.Printf("[WARN] consul: failed to broadcast new leader event: %v", err)
 	}
 
 	// Reconcile channel is only used once initial reconcile
@@ -328,6 +326,25 @@ func (s *Server) getOrCreateAutopilotConfig() (*structs.AutopilotConfig, bool) {
 	return config, true
 }
 
+// reconcile is used to reconcile the differences between Serf
+// membership and what is reflected in our strongly consistent store.
+// Mainly we need to ensure all live nodes are registered, all failed
+// nodes are marked as such, and all left nodes are de-registered.
+func (s *Server) reconcile() (err error) {
+	defer metrics.MeasureSince([]string{"consul", "leader", "reconcile"}, time.Now())
+	members := s.serfLAN.Members()
+	knownMembers := make(map[string]struct{})
+	for _, member := range members {
+		if err := s.reconcileMember(member); err != nil {
+			return err
+		}
+		knownMembers[member.Name] = struct{}{}
+	}
+
+	// Reconcile any members that have been reaped while we were not the leader
+	return s.reconcileReaped(knownMembers)
+}
+
 // reconcileReaped is used to reconcile nodes that have failed and been reaped
 // from Serf but remain in the catalog. This is done by looking for SerfCheckID
 // in a critical state that does not correspond to a known Serf member. We generate
@@ -410,9 +427,10 @@ func (s *Server) reconcileMember(member serf.Member) error {
 			member, err)
 
 		// Permission denied should not bubble up
-		if acl.IsErrPermissionDenied(err) {
+		if strings.Contains(err.Error(), permissionDenied) {
 			return nil
 		}
+		return err
 	}
 	return nil
 }
@@ -422,9 +440,7 @@ func (s *Server) shouldHandleMember(member serf.Member) bool {
 	if valid, dc := isConsulNode(member); valid && dc == s.config.Datacenter {
 		return true
 	}
-	if valid, parts := metadata.IsConsulServer(member); valid &&
-		parts.Segment == "" &&
-		parts.Datacenter == s.config.Datacenter {
+	if valid, parts := metadata.IsConsulServer(member); valid && parts.Datacenter == s.config.Datacenter {
 		return true
 	}
 	return false
@@ -607,6 +623,11 @@ func (s *Server) handleDeregisterMember(reason string, member serf.Member) error
 
 // joinConsulServer is used to try to join another consul server
 func (s *Server) joinConsulServer(m serf.Member, parts *metadata.Server) error {
+	// Do not join ourself
+	if m.Name == s.config.NodeName {
+		return nil
+	}
+
 	// Check for possibility of multiple bootstrap nodes
 	if parts.Bootstrap {
 		members := s.serfLAN.Members()
@@ -619,28 +640,20 @@ func (s *Server) joinConsulServer(m serf.Member, parts *metadata.Server) error {
 		}
 	}
 
-	// Processing ourselves could result in trying to remove ourselves to
-	// fix up our address, which would make us step down. This is only
-	// safe to attempt if there are multiple servers available.
-	configFuture := s.raft.GetConfiguration()
-	if err := configFuture.Error(); err != nil {
-		s.logger.Printf("[ERR] consul: failed to get raft configuration: %v", err)
+	addr := (&net.TCPAddr{IP: m.Addr, Port: parts.Port}).String()
+
+	minRaftProtocol, err := ServerMinRaftProtocol(s.serfLAN.Members())
+	if err != nil {
 		return err
-	}
-	if m.Name == s.config.NodeName {
-		if l := len(configFuture.Configuration().Servers); l < 3 {
-			s.logger.Printf("[DEBUG] consul: Skipping self join check for %q since the cluster is too small", m.Name)
-			return nil
-		}
 	}
 
 	// See if it's already in the configuration. It's harmless to re-add it
 	// but we want to avoid doing that if possible to prevent useless Raft
 	// log entries. If the address is the same but the ID changed, remove the
 	// old server before adding the new one.
-	addr := (&net.TCPAddr{IP: m.Addr, Port: parts.Port}).String()
-	minRaftProtocol, err := ServerMinRaftProtocol(s.serfLAN.Members())
-	if err != nil {
+	configFuture := s.raft.GetConfiguration()
+	if err := configFuture.Error(); err != nil {
+		s.logger.Printf("[ERR] consul: failed to get raft configuration: %v", err)
 		return err
 	}
 	for _, server := range configFuture.Configuration().Servers {

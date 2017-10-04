@@ -4,10 +4,10 @@ language: go
 
 go:
   - 1.8
-  - 1.9
-
-branches:
-  only:
-    - master
+  - tip
 
 script: make updatedeps test testrace
+
+matrix:
+  allow_failures:
+    - go: tip

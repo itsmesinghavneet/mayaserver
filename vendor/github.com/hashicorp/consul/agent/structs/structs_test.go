@@ -482,7 +482,7 @@ func TestStructs_ValidateMetadata(t *testing.T) {
 		"key2": "value2",
 	}
 	// Should succeed
-	if err := ValidateMetadata(meta, false); err != nil {
+	if err := ValidateMetadata(meta); err != nil {
 		t.Fatalf("err: %s", err)
 	}
 
@@ -490,7 +490,7 @@ func TestStructs_ValidateMetadata(t *testing.T) {
 	meta = map[string]string{
 		"": "value1",
 	}
-	if err := ValidateMetadata(meta, false); !strings.Contains(err.Error(), "Couldn't load metadata pair") {
+	if err := ValidateMetadata(meta); !strings.Contains(err.Error(), "Couldn't load metadata pair") {
 		t.Fatalf("should have failed")
 	}
 
@@ -499,21 +499,8 @@ func TestStructs_ValidateMetadata(t *testing.T) {
 	for i := 0; i < metaMaxKeyPairs+1; i++ {
 		meta[string(i)] = "value"
 	}
-	if err := ValidateMetadata(meta, false); !strings.Contains(err.Error(), "cannot contain more than") {
+	if err := ValidateMetadata(meta); !strings.Contains(err.Error(), "cannot contain more than") {
 		t.Fatalf("should have failed")
-	}
-
-	// Should not error
-	meta = map[string]string{
-		metaKeyReservedPrefix + "key": "value1",
-	}
-	// Should fail
-	if err := ValidateMetadata(meta, false); err == nil || !strings.Contains(err.Error(), "reserved for internal use") {
-		t.Fatalf("err: %s", err)
-	}
-	// Should succeed
-	if err := ValidateMetadata(meta, true); err != nil {
-		t.Fatalf("err: %s", err)
 	}
 }
 
@@ -521,31 +508,28 @@ func TestStructs_validateMetaPair(t *testing.T) {
 	longKey := strings.Repeat("a", metaKeyMaxLength+1)
 	longValue := strings.Repeat("b", metaValueMaxLength+1)
 	pairs := []struct {
-		Key               string
-		Value             string
-		Error             string
-		AllowConsulPrefix bool
+		Key   string
+		Value string
+		Error string
 	}{
 		// valid pair
-		{"key", "value", "", false},
+		{"key", "value", ""},
 		// invalid, blank key
-		{"", "value", "cannot be blank", false},
+		{"", "value", "cannot be blank"},
 		// allowed special chars in key name
-		{"k_e-y", "value", "", false},
+		{"k_e-y", "value", ""},
 		// disallowed special chars in key name
-		{"(%key&)", "value", "invalid characters", false},
+		{"(%key&)", "value", "invalid characters"},
 		// key too long
-		{longKey, "value", "Key is too long", false},
+		{longKey, "value", "Key is too long"},
 		// reserved prefix
-		{metaKeyReservedPrefix + "key", "value", "reserved for internal use", false},
-		// reserved prefix, allowed
-		{metaKeyReservedPrefix + "key", "value", "", true},
+		{metaKeyReservedPrefix + "key", "value", "reserved for internal use"},
 		// value too long
-		{"key", longValue, "Value is too long", false},
+		{"key", longValue, "Value is too long"},
 	}
 
 	for _, pair := range pairs {
-		err := validateMetaPair(pair.Key, pair.Value, pair.AllowConsulPrefix)
+		err := validateMetaPair(pair.Key, pair.Value)
 		if pair.Error == "" && err != nil {
 			t.Fatalf("should have succeeded: %v, %v", pair, err)
 		} else if pair.Error != "" && !strings.Contains(err.Error(), pair.Error) {

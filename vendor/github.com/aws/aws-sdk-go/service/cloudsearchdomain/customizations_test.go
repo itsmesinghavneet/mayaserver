@@ -3,6 +3,8 @@ package cloudsearchdomain_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/awstesting/unit"
 	"github.com/aws/aws-sdk-go/service/cloudsearchdomain"
@@ -16,33 +18,22 @@ func TestRequireEndpointIfRegionProvided(t *testing.T) {
 	req, _ := svc.SearchRequest(nil)
 	err := req.Build()
 
-	if e, a := "", svc.Endpoint; e != a {
-		t.Errorf("expect %v, got %v", e, a)
-	}
-	if err == nil {
-		t.Errorf("expect error, got none")
-	}
-	if e, a := aws.ErrMissingEndpoint, err; e != a {
-		t.Errorf("expect %v, got %v", e, a)
-	}
+	assert.Equal(t, "", svc.Endpoint)
+	assert.Error(t, err)
+	assert.Equal(t, aws.ErrMissingEndpoint, err)
 }
 
 func TestRequireEndpointIfNoRegionProvided(t *testing.T) {
 	svc := cloudsearchdomain.New(unit.Session, &aws.Config{
+		Region:                 aws.String(""),
 		DisableParamValidation: aws.Bool(true),
 	})
 	req, _ := svc.SearchRequest(nil)
 	err := req.Build()
 
-	if e, a := "", svc.Endpoint; e != a {
-		t.Errorf("expect %v, got %v", e, a)
-	}
-	if err == nil {
-		t.Errorf("expect error, got none")
-	}
-	if e, a := aws.ErrMissingEndpoint, err; e != a {
-		t.Errorf("expect %v, got %v", e, a)
-	}
+	assert.Equal(t, "", svc.Endpoint)
+	assert.Error(t, err)
+	assert.Equal(t, aws.ErrMissingEndpoint, err)
 }
 
 func TestRequireEndpointUsed(t *testing.T) {
@@ -54,10 +45,6 @@ func TestRequireEndpointUsed(t *testing.T) {
 	req, _ := svc.SearchRequest(nil)
 	err := req.Build()
 
-	if e, a := "https://endpoint", svc.Endpoint; e != a {
-		t.Errorf("expect %v, got %v", e, a)
-	}
-	if err != nil {
-		t.Errorf("expect no error, got %v", err)
-	}
+	assert.Equal(t, "https://endpoint", svc.Endpoint)
+	assert.NoError(t, err)
 }

@@ -186,7 +186,7 @@ func (d *LxcDriver) Start(ctx *ExecContext, task *structs.Task) (DriverHandle, e
 		lxcPath = path
 	}
 
-	containerName := fmt.Sprintf("%s-%s", task.Name, d.DriverContext.allocID)
+	containerName := fmt.Sprintf("%s-%s", task.Name, ctx.AllocID)
 	c, err := lxc.NewContainer(containerName, lxcPath)
 	if err != nil {
 		return nil, fmt.Errorf("unable to initialize container: %v", err)

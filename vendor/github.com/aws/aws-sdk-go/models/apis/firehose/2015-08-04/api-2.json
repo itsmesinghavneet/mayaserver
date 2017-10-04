@@ -4,12 +4,11 @@
     "apiVersion":"2015-08-04",
     "endpointPrefix":"firehose",
     "jsonVersion":"1.1",
-    "protocol":"json",
     "serviceAbbreviation":"Firehose",
     "serviceFullName":"Amazon Kinesis Firehose",
     "signatureVersion":"v4",
     "targetPrefix":"Firehose_20150804",
-    "uid":"firehose-2015-08-04"
+    "protocol":"json"
   },
   "operations":{
     "CreateDeliveryStream":{
@@ -21,9 +20,18 @@
       "input":{"shape":"CreateDeliveryStreamInput"},
       "output":{"shape":"CreateDeliveryStreamOutput"},
       "errors":[
-        {"shape":"InvalidArgumentException"},
-        {"shape":"LimitExceededException"},
-        {"shape":"ResourceInUseException"}
+        {
+          "shape":"InvalidArgumentException",
+          "exception":true
+        },
+        {
+          "shape":"LimitExceededException",
+          "exception":true
+        },
+        {
+          "shape":"ResourceInUseException",
+          "exception":true
+        }
       ]
     },
     "DeleteDeliveryStream":{
@@ -35,8 +43,14 @@
       "input":{"shape":"DeleteDeliveryStreamInput"},
       "output":{"shape":"DeleteDeliveryStreamOutput"},
       "errors":[
-        {"shape":"ResourceInUseException"},
-        {"shape":"ResourceNotFoundException"}
+        {
+          "shape":"ResourceInUseException",
+          "exception":true
+        },
+        {
+          "shape":"ResourceNotFoundException",
+          "exception":true
+        }
       ]
     },
     "DescribeDeliveryStream":{
@@ -48,23 +62,11 @@
       "input":{"shape":"DescribeDeliveryStreamInput"},
       "output":{"shape":"DescribeDeliveryStreamOutput"},
       "errors":[
-        {"shape":"ResourceNotFoundException"}
+        {
+          "shape":"ResourceNotFoundException",
+          "exception":true
+        }
       ]
-    },
-    "GetKinesisStream":{
-      "name":"GetKinesisStream",
-      "http":{
-        "method":"POST",
-        "requestUri":"/"
-      },
-      "input":{"shape":"GetKinesisStreamInput"},
-      "output":{"shape":"GetKinesisStreamOutput"},
-      "errors":[
-        {"shape":"ResourceNotFoundException"},
-        {"shape":"InvalidArgumentException"},
-        {"shape":"InvalidStreamTypeException"}
-      ],
-      "internalonly":true
     },
     "ListDeliveryStreams":{
       "name":"ListDeliveryStreams",
@@ -84,9 +86,20 @@
       "input":{"shape":"PutRecordInput"},
       "output":{"shape":"PutRecordOutput"},
       "errors":[
-        {"shape":"ResourceNotFoundException"},
-        {"shape":"InvalidArgumentException"},
-        {"shape":"ServiceUnavailableException"}
+        {
+          "shape":"ResourceNotFoundException",
+          "exception":true
+        },
+        {
+          "shape":"InvalidArgumentException",
+          "exception":true
+        },
+        {
+          "shape":"ServiceUnavailableException",
+          "error":{"httpStatusCode":503},
+          "exception":true,
+          "fault":true
+        }
       ]
     },
     "PutRecordBatch":{
@@ -98,9 +111,20 @@
       "input":{"shape":"PutRecordBatchInput"},
       "output":{"shape":"PutRecordBatchOutput"},
       "errors":[
-        {"shape":"ResourceNotFoundException"},
-        {"shape":"InvalidArgumentException"},
-        {"shape":"ServiceUnavailableException"}
+        {
+          "shape":"ResourceNotFoundException",
+          "exception":true
+        },
+        {
+          "shape":"InvalidArgumentException",
+          "exception":true
+        },
+        {
+          "shape":"ServiceUnavailableException",
+          "error":{"httpStatusCode":503},
+          "exception":true,
+          "fault":true
+        }
       ]
     },
     "UpdateDestination":{
@@ -112,26 +136,37 @@
       "input":{"shape":"UpdateDestinationInput"},
       "output":{"shape":"UpdateDestinationOutput"},
       "errors":[
-        {"shape":"InvalidArgumentException"},
-        {"shape":"ResourceInUseException"},
-        {"shape":"ResourceNotFoundException"},
-        {"shape":"ConcurrentModificationException"}
+        {
+          "shape":"InvalidArgumentException",
+          "exception":true
+        },
+        {
+          "shape":"ResourceInUseException",
+          "exception":true
+        },
+        {
+          "shape":"ResourceNotFoundException",
+          "exception":true
+        },
+        {
+          "shape":"ConcurrentModificationException",
+          "exception":true
+        }
       ]
     }
   },
   "shapes":{
     "AWSKMSKeyARN":{
       "type":"string",
-      "max":512,
       "min":1,
+      "max":512,
       "pattern":"arn:.*"
     },
-    "AccessKeyId":{"type":"string"},
     "BooleanObject":{"type":"boolean"},
     "BucketARN":{
       "type":"string",
-      "max":2048,
       "min":1,
+      "max":2048,
       "pattern":"arn:.*"
     },
     "BufferingHints":{
@@ -139,14 +174,6 @@
       "members":{
         "SizeInMBs":{"shape":"SizeInMBs"},
         "IntervalInSeconds":{"shape":"IntervalInSeconds"}
-      }
-    },
-    "CloudWatchLoggingOptions":{
-      "type":"structure",
-      "members":{
-        "Enabled":{"shape":"BooleanObject"},
-        "LogGroupName":{"shape":"LogGroupName"},
-        "LogStreamName":{"shape":"LogStreamName"}
       }
     },
     "ClusterJDBCURL":{
@@ -185,15 +212,8 @@
       "required":["DeliveryStreamName"],
       "members":{
         "DeliveryStreamName":{"shape":"DeliveryStreamName"},
-        "DeliveryStreamType":{"shape":"DeliveryStreamType"},
-        "KinesisStreamSourceConfiguration":{"shape":"KinesisStreamSourceConfiguration"},
-        "S3DestinationConfiguration":{
-          "shape":"S3DestinationConfiguration",
-          "deprecated":true
-        },
-        "ExtendedS3DestinationConfiguration":{"shape":"ExtendedS3DestinationConfiguration"},
-        "RedshiftDestinationConfiguration":{"shape":"RedshiftDestinationConfiguration"},
-        "ElasticsearchDestinationConfiguration":{"shape":"ElasticsearchDestinationConfiguration"}
+        "S3DestinationConfiguration":{"shape":"S3DestinationConfiguration"},
+        "RedshiftDestinationConfiguration":{"shape":"RedshiftDestinationConfiguration"}
       }
     },
     "CreateDeliveryStreamOutput":{
@@ -204,8 +224,8 @@
     },
     "Data":{
       "type":"blob",
-      "max":1024000,
-      "min":0
+      "min":0,
+      "max":1024000
     },
     "DataTableColumns":{"type":"string"},
     "DataTableName":{
@@ -224,20 +244,13 @@
       "members":{
       }
     },
-    "DeliveryStartTimestamp":{"type":"timestamp"},
-    "DeliveryStreamARN":{
-      "type":"string",
-      "max":512,
-      "min":1,
-      "pattern":"arn:.*"
-    },
+    "DeliveryStreamARN":{"type":"string"},
     "DeliveryStreamDescription":{
       "type":"structure",
       "required":[
         "DeliveryStreamName",
         "DeliveryStreamARN",
         "DeliveryStreamStatus",
-        "DeliveryStreamType",
         "VersionId",
         "Destinations",
         "HasMoreDestinations"
@@ -246,19 +259,17 @@
         "DeliveryStreamName":{"shape":"DeliveryStreamName"},
         "DeliveryStreamARN":{"shape":"DeliveryStreamARN"},
         "DeliveryStreamStatus":{"shape":"DeliveryStreamStatus"},
-        "DeliveryStreamType":{"shape":"DeliveryStreamType"},
         "VersionId":{"shape":"DeliveryStreamVersionId"},
         "CreateTimestamp":{"shape":"Timestamp"},
         "LastUpdateTimestamp":{"shape":"Timestamp"},
-        "Source":{"shape":"SourceDescription"},
         "Destinations":{"shape":"DestinationDescriptionList"},
         "HasMoreDestinations":{"shape":"BooleanObject"}
       }
     },
     "DeliveryStreamName":{
       "type":"string",
-      "max":64,
       "min":1,
+      "max":64,
       "pattern":"[a-zA-Z0-9_.-]+"
     },
     "DeliveryStreamNameList":{
@@ -273,17 +284,10 @@
         "ACTIVE"
       ]
     },
-    "DeliveryStreamType":{
-      "type":"string",
-      "enum":[
-        "DirectPut",
-        "KinesisStreamAsSource"
-      ]
-    },
     "DeliveryStreamVersionId":{
       "type":"string",
-      "max":50,
       "min":1,
+      "max":50,
       "pattern":"[0-9]+"
     },
     "DescribeDeliveryStreamInput":{
@@ -297,8 +301,8 @@
     },
     "DescribeDeliveryStreamInputLimit":{
       "type":"integer",
-      "max":10000,
-      "min":1
+      "min":1,
+      "max":10000
     },
     "DescribeDeliveryStreamOutput":{
       "type":"structure",
@@ -313,9 +317,7 @@
       "members":{
         "DestinationId":{"shape":"DestinationId"},
         "S3DestinationDescription":{"shape":"S3DestinationDescription"},
-        "ExtendedS3DestinationDescription":{"shape":"ExtendedS3DestinationDescription"},
-        "RedshiftDestinationDescription":{"shape":"RedshiftDestinationDescription"},
-        "ElasticsearchDestinationDescription":{"shape":"ElasticsearchDestinationDescription"}
+        "RedshiftDestinationDescription":{"shape":"RedshiftDestinationDescription"}
       }
     },
     "DestinationDescriptionList":{
@@ -324,123 +326,8 @@
     },
     "DestinationId":{
       "type":"string",
-      "max":100,
-      "min":1
-    },
-    "ElasticsearchBufferingHints":{
-      "type":"structure",
-      "members":{
-        "IntervalInSeconds":{"shape":"ElasticsearchBufferingIntervalInSeconds"},
-        "SizeInMBs":{"shape":"ElasticsearchBufferingSizeInMBs"}
-      }
-    },
-    "ElasticsearchBufferingIntervalInSeconds":{
-      "type":"integer",
-      "max":900,
-      "min":60
-    },
-    "ElasticsearchBufferingSizeInMBs":{
-      "type":"integer",
-      "max":100,
-      "min":1
-    },
-    "ElasticsearchDestinationConfiguration":{
-      "type":"structure",
-      "required":[
-        "RoleARN",
-        "DomainARN",
-        "IndexName",
-        "TypeName",
-        "S3Configuration"
-      ],
-      "members":{
-        "RoleARN":{"shape":"RoleARN"},
-        "DomainARN":{"shape":"ElasticsearchDomainARN"},
-        "IndexName":{"shape":"ElasticsearchIndexName"},
-        "TypeName":{"shape":"ElasticsearchTypeName"},
-        "IndexRotationPeriod":{"shape":"ElasticsearchIndexRotationPeriod"},
-        "BufferingHints":{"shape":"ElasticsearchBufferingHints"},
-        "RetryOptions":{"shape":"ElasticsearchRetryOptions"},
-        "S3BackupMode":{"shape":"ElasticsearchS3BackupMode"},
-        "S3Configuration":{"shape":"S3DestinationConfiguration"},
-        "ProcessingConfiguration":{"shape":"ProcessingConfiguration"},
-        "CloudWatchLoggingOptions":{"shape":"CloudWatchLoggingOptions"}
-      }
-    },
-    "ElasticsearchDestinationDescription":{
-      "type":"structure",
-      "members":{
-        "RoleARN":{"shape":"RoleARN"},
-        "DomainARN":{"shape":"ElasticsearchDomainARN"},
-        "IndexName":{"shape":"ElasticsearchIndexName"},
-        "TypeName":{"shape":"ElasticsearchTypeName"},
-        "IndexRotationPeriod":{"shape":"ElasticsearchIndexRotationPeriod"},
-        "BufferingHints":{"shape":"ElasticsearchBufferingHints"},
-        "RetryOptions":{"shape":"ElasticsearchRetryOptions"},
-        "S3BackupMode":{"shape":"ElasticsearchS3BackupMode"},
-        "S3DestinationDescription":{"shape":"S3DestinationDescription"},
-        "ProcessingConfiguration":{"shape":"ProcessingConfiguration"},
-        "CloudWatchLoggingOptions":{"shape":"CloudWatchLoggingOptions"}
-      }
-    },
-    "ElasticsearchDestinationUpdate":{
-      "type":"structure",
-      "members":{
-        "RoleARN":{"shape":"RoleARN"},
-        "DomainARN":{"shape":"ElasticsearchDomainARN"},
-        "IndexName":{"shape":"ElasticsearchIndexName"},
-        "TypeName":{"shape":"ElasticsearchTypeName"},
-        "IndexRotationPeriod":{"shape":"ElasticsearchIndexRotationPeriod"},
-        "BufferingHints":{"shape":"ElasticsearchBufferingHints"},
-        "RetryOptions":{"shape":"ElasticsearchRetryOptions"},
-        "S3Update":{"shape":"S3DestinationUpdate"},
-        "ProcessingConfiguration":{"shape":"ProcessingConfiguration"},
-        "CloudWatchLoggingOptions":{"shape":"CloudWatchLoggingOptions"}
-      }
-    },
-    "ElasticsearchDomainARN":{
-      "type":"string",
-      "max":512,
       "min":1,
-      "pattern":"arn:.*"
-    },
-    "ElasticsearchIndexName":{
-      "type":"string",
-      "max":80,
-      "min":1
-    },
-    "ElasticsearchIndexRotationPeriod":{
-      "type":"string",
-      "enum":[
-        "NoRotation",
-        "OneHour",
-        "OneDay",
-        "OneWeek",
-        "OneMonth"
-      ]
-    },
-    "ElasticsearchRetryDurationInSeconds":{
-      "type":"integer",
-      "max":7200,
-      "min":0
-    },
-    "ElasticsearchRetryOptions":{
-      "type":"structure",
-      "members":{
-        "DurationInSeconds":{"shape":"ElasticsearchRetryDurationInSeconds"}
-      }
-    },
-    "ElasticsearchS3BackupMode":{
-      "type":"string",
-      "enum":[
-        "FailedDocumentsOnly",
-        "AllDocuments"
-      ]
-    },
-    "ElasticsearchTypeName":{
-      "type":"string",
-      "max":100,
-      "min":1
+      "max":100
     },
     "EncryptionConfiguration":{
       "type":"structure",
@@ -451,81 +338,10 @@
     },
     "ErrorCode":{"type":"string"},
     "ErrorMessage":{"type":"string"},
-    "ExtendedS3DestinationConfiguration":{
-      "type":"structure",
-      "required":[
-        "RoleARN",
-        "BucketARN"
-      ],
-      "members":{
-        "RoleARN":{"shape":"RoleARN"},
-        "BucketARN":{"shape":"BucketARN"},
-        "Prefix":{"shape":"Prefix"},
-        "BufferingHints":{"shape":"BufferingHints"},
-        "CompressionFormat":{"shape":"CompressionFormat"},
-        "EncryptionConfiguration":{"shape":"EncryptionConfiguration"},
-        "CloudWatchLoggingOptions":{"shape":"CloudWatchLoggingOptions"},
-        "ProcessingConfiguration":{"shape":"ProcessingConfiguration"},
-        "S3BackupMode":{"shape":"S3BackupMode"},
-        "S3BackupConfiguration":{"shape":"S3DestinationConfiguration"}
-      }
-    },
-    "ExtendedS3DestinationDescription":{
-      "type":"structure",
-      "required":[
-        "RoleARN",
-        "BucketARN",
-        "BufferingHints",
-        "CompressionFormat",
-        "EncryptionConfiguration"
-      ],
-      "members":{
-        "RoleARN":{"shape":"RoleARN"},
-        "BucketARN":{"shape":"BucketARN"},
-        "Prefix":{"shape":"Prefix"},
-        "BufferingHints":{"shape":"BufferingHints"},
-        "CompressionFormat":{"shape":"CompressionFormat"},
-        "EncryptionConfiguration":{"shape":"EncryptionConfiguration"},
-        "CloudWatchLoggingOptions":{"shape":"CloudWatchLoggingOptions"},
-        "ProcessingConfiguration":{"shape":"ProcessingConfiguration"},
-        "S3BackupMode":{"shape":"S3BackupMode"},
-        "S3BackupDescription":{"shape":"S3DestinationDescription"}
-      }
-    },
-    "ExtendedS3DestinationUpdate":{
-      "type":"structure",
-      "members":{
-        "RoleARN":{"shape":"RoleARN"},
-        "BucketARN":{"shape":"BucketARN"},
-        "Prefix":{"shape":"Prefix"},
-        "BufferingHints":{"shape":"BufferingHints"},
-        "CompressionFormat":{"shape":"CompressionFormat"},
-        "EncryptionConfiguration":{"shape":"EncryptionConfiguration"},
-        "CloudWatchLoggingOptions":{"shape":"CloudWatchLoggingOptions"},
-        "ProcessingConfiguration":{"shape":"ProcessingConfiguration"},
-        "S3BackupMode":{"shape":"S3BackupMode"},
-        "S3BackupUpdate":{"shape":"S3DestinationUpdate"}
-      }
-    },
-    "FirehoseSource":{"type":"string"},
-    "GetKinesisStreamInput":{
-      "type":"structure",
-      "required":["DeliveryStreamARN"],
-      "members":{
-        "DeliveryStreamARN":{"shape":"DeliveryStreamARN"}
-      }
-    },
-    "GetKinesisStreamOutput":{
-      "type":"structure",
-      "members":{
-        "KinesisStreamARN":{"shape":"KinesisStreamARN"},
-        "CredentialsForReadingKinesisStream":{"shape":"SessionCredentials"}
-      }
-    },
     "IntervalInSeconds":{
       "type":"integer",
-      "max":900,
-      "min":60
+      "min":60,
+      "max":900
     },
     "InvalidArgumentException":{
       "type":"structure",
@@ -534,44 +350,11 @@
       },
       "exception":true
     },
-    "InvalidStreamTypeException":{
-      "type":"structure",
-      "members":{
-        "message":{"shape":"ErrorMessage"},
-        "source":{"shape":"FirehoseSource"}
-      },
-      "exception":true
-    },
     "KMSEncryptionConfig":{
       "type":"structure",
       "required":["AWSKMSKeyARN"],
       "members":{
         "AWSKMSKeyARN":{"shape":"AWSKMSKeyARN"}
-      }
-    },
-    "KinesisStreamARN":{
-      "type":"string",
-      "max":512,
-      "min":1,
-      "pattern":"arn:.*"
-    },
-    "KinesisStreamSourceConfiguration":{
-      "type":"structure",
-      "required":[
-        "KinesisStreamARN",
-        "RoleARN"
-      ],
-      "members":{
-        "KinesisStreamARN":{"shape":"KinesisStreamARN"},
-        "RoleARN":{"shape":"RoleARN"}
-      }
-    },
-    "KinesisStreamSourceDescription":{
-      "type":"structure",
-      "members":{
-        "KinesisStreamARN":{"shape":"KinesisStreamARN"},
-        "RoleARN":{"shape":"RoleARN"},
-        "DeliveryStartTimestamp":{"shape":"DeliveryStartTimestamp"}
       }
     },
     "LimitExceededException":{
@@ -585,14 +368,13 @@
       "type":"structure",
       "members":{
         "Limit":{"shape":"ListDeliveryStreamsInputLimit"},
-        "DeliveryStreamType":{"shape":"DeliveryStreamType"},
         "ExclusiveStartDeliveryStreamName":{"shape":"DeliveryStreamName"}
       }
     },
     "ListDeliveryStreamsInputLimit":{
       "type":"integer",
-      "max":10000,
-      "min":1
+      "min":1,
+      "max":10000
     },
     "ListDeliveryStreamsOutput":{
       "type":"structure",
@@ -605,8 +387,6 @@
         "HasMoreDeliveryStreams":{"shape":"BooleanObject"}
       }
     },
-    "LogGroupName":{"type":"string"},
-    "LogStreamName":{"type":"string"},
     "NoEncryptionConfig":{
       "type":"string",
       "enum":["NoEncryption"]
@@ -621,56 +401,6 @@
       "sensitive":true
     },
     "Prefix":{"type":"string"},
-    "ProcessingConfiguration":{
-      "type":"structure",
-      "members":{
-        "Enabled":{"shape":"BooleanObject"},
-        "Processors":{"shape":"ProcessorList"}
-      }
-    },
-    "Processor":{
-      "type":"structure",
-      "required":["Type"],
-      "members":{
-        "Type":{"shape":"ProcessorType"},
-        "Parameters":{"shape":"ProcessorParameterList"}
-      }
-    },
-    "ProcessorList":{
-      "type":"list",
-      "member":{"shape":"Processor"}
-    },
-    "ProcessorParameter":{
-      "type":"structure",
-      "required":[
-        "ParameterName",
-        "ParameterValue"
-      ],
-      "members":{
-        "ParameterName":{"shape":"ProcessorParameterName"},
-        "ParameterValue":{"shape":"ProcessorParameterValue"}
-      }
-    },
-    "ProcessorParameterList":{
-      "type":"list",
-      "member":{"shape":"ProcessorParameter"}
-    },
-    "ProcessorParameterName":{
-      "type":"string",
-      "enum":[
-        "LambdaArn",
-        "NumberOfRetries"
-      ]
-    },
-    "ProcessorParameterValue":{
-      "type":"string",
-      "max":512,
-      "min":1
-    },
-    "ProcessorType":{
-      "type":"string",
-      "enum":["Lambda"]
-    },
     "PutRecordBatchInput":{
       "type":"structure",
       "required":[
@@ -696,8 +426,8 @@
     "PutRecordBatchRequestEntryList":{
       "type":"list",
       "member":{"shape":"Record"},
-      "max":500,
-      "min":1
+      "min":1,
+      "max":500
     },
     "PutRecordBatchResponseEntry":{
       "type":"structure",
@@ -710,8 +440,8 @@
     "PutRecordBatchResponseEntryList":{
       "type":"list",
       "member":{"shape":"PutRecordBatchResponseEntry"},
-      "max":500,
-      "min":1
+      "min":1,
+      "max":500
     },
     "PutRecordInput":{
       "type":"structure",
@@ -758,12 +488,7 @@
         "CopyCommand":{"shape":"CopyCommand"},
         "Username":{"shape":"Username"},
         "Password":{"shape":"Password"},
-        "RetryOptions":{"shape":"RedshiftRetryOptions"},
-        "S3Configuration":{"shape":"S3DestinationConfiguration"},
-        "ProcessingConfiguration":{"shape":"ProcessingConfiguration"},
-        "S3BackupMode":{"shape":"RedshiftS3BackupMode"},
-        "S3BackupConfiguration":{"shape":"S3DestinationConfiguration"},
-        "CloudWatchLoggingOptions":{"shape":"CloudWatchLoggingOptions"}
+        "S3Configuration":{"shape":"S3DestinationConfiguration"}
       }
     },
     "RedshiftDestinationDescription":{
@@ -780,12 +505,7 @@
         "ClusterJDBCURL":{"shape":"ClusterJDBCURL"},
         "CopyCommand":{"shape":"CopyCommand"},
         "Username":{"shape":"Username"},
-        "RetryOptions":{"shape":"RedshiftRetryOptions"},
-        "S3DestinationDescription":{"shape":"S3DestinationDescription"},
-        "ProcessingConfiguration":{"shape":"ProcessingConfiguration"},
-        "S3BackupMode":{"shape":"RedshiftS3BackupMode"},
-        "S3BackupDescription":{"shape":"S3DestinationDescription"},
-        "CloudWatchLoggingOptions":{"shape":"CloudWatchLoggingOptions"}
+        "S3DestinationDescription":{"shape":"S3DestinationDescription"}
       }
     },
     "RedshiftDestinationUpdate":{
@@ -796,31 +516,8 @@
         "CopyCommand":{"shape":"CopyCommand"},
         "Username":{"shape":"Username"},
         "Password":{"shape":"Password"},
-        "RetryOptions":{"shape":"RedshiftRetryOptions"},
-        "S3Update":{"shape":"S3DestinationUpdate"},
-        "ProcessingConfiguration":{"shape":"ProcessingConfiguration"},
-        "S3BackupMode":{"shape":"RedshiftS3BackupMode"},
-        "S3BackupUpdate":{"shape":"S3DestinationUpdate"},
-        "CloudWatchLoggingOptions":{"shape":"CloudWatchLoggingOptions"}
+        "S3Update":{"shape":"S3DestinationUpdate"}
       }
-    },
-    "RedshiftRetryDurationInSeconds":{
-      "type":"integer",
-      "max":7200,
-      "min":0
-    },
-    "RedshiftRetryOptions":{
-      "type":"structure",
-      "members":{
-        "DurationInSeconds":{"shape":"RedshiftRetryDurationInSeconds"}
-      }
-    },
-    "RedshiftS3BackupMode":{
-      "type":"string",
-      "enum":[
-        "Disabled",
-        "Enabled"
-      ]
     },
     "ResourceInUseException":{
       "type":"structure",
@@ -838,16 +535,9 @@
     },
     "RoleARN":{
       "type":"string",
-      "max":512,
       "min":1,
+      "max":512,
       "pattern":"arn:.*"
-    },
-    "S3BackupMode":{
-      "type":"string",
-      "enum":[
-        "Disabled",
-        "Enabled"
-      ]
     },
     "S3DestinationConfiguration":{
       "type":"structure",
@@ -861,8 +551,7 @@
         "Prefix":{"shape":"Prefix"},
         "BufferingHints":{"shape":"BufferingHints"},
         "CompressionFormat":{"shape":"CompressionFormat"},
-        "EncryptionConfiguration":{"shape":"EncryptionConfiguration"},
-        "CloudWatchLoggingOptions":{"shape":"CloudWatchLoggingOptions"}
+        "EncryptionConfiguration":{"shape":"EncryptionConfiguration"}
       }
     },
     "S3DestinationDescription":{
@@ -880,8 +569,7 @@
         "Prefix":{"shape":"Prefix"},
         "BufferingHints":{"shape":"BufferingHints"},
         "CompressionFormat":{"shape":"CompressionFormat"},
-        "EncryptionConfiguration":{"shape":"EncryptionConfiguration"},
-        "CloudWatchLoggingOptions":{"shape":"CloudWatchLoggingOptions"}
+        "EncryptionConfiguration":{"shape":"EncryptionConfiguration"}
       }
     },
     "S3DestinationUpdate":{
@@ -892,45 +580,22 @@
         "Prefix":{"shape":"Prefix"},
         "BufferingHints":{"shape":"BufferingHints"},
         "CompressionFormat":{"shape":"CompressionFormat"},
-        "EncryptionConfiguration":{"shape":"EncryptionConfiguration"},
-        "CloudWatchLoggingOptions":{"shape":"CloudWatchLoggingOptions"}
+        "EncryptionConfiguration":{"shape":"EncryptionConfiguration"}
       }
     },
-    "SecretAccessKey":{"type":"string"},
     "ServiceUnavailableException":{
       "type":"structure",
       "members":{
         "message":{"shape":"ErrorMessage"}
       },
+      "error":{"httpStatusCode":503},
       "exception":true,
       "fault":true
     },
-    "SessionCredentials":{
-      "type":"structure",
-      "required":[
-        "AccessKeyId",
-        "SecretAccessKey",
-        "SessionToken",
-        "Expiration"
-      ],
-      "members":{
-        "AccessKeyId":{"shape":"AccessKeyId"},
-        "SecretAccessKey":{"shape":"SecretAccessKey"},
-        "SessionToken":{"shape":"SessionToken"},
-        "Expiration":{"shape":"Timestamp"}
-      }
-    },
-    "SessionToken":{"type":"string"},
     "SizeInMBs":{
       "type":"integer",
-      "max":128,
-      "min":1
-    },
-    "SourceDescription":{
-      "type":"structure",
-      "members":{
-        "KinesisStreamSourceDescription":{"shape":"KinesisStreamSourceDescription"}
-      }
+      "min":1,
+      "max":128
     },
     "Timestamp":{"type":"timestamp"},
     "UpdateDestinationInput":{
@@ -944,13 +609,8 @@
         "DeliveryStreamName":{"shape":"DeliveryStreamName"},
         "CurrentDeliveryStreamVersionId":{"shape":"DeliveryStreamVersionId"},
         "DestinationId":{"shape":"DestinationId"},
-        "S3DestinationUpdate":{
-          "shape":"S3DestinationUpdate",
-          "deprecated":true
-        },
-        "ExtendedS3DestinationUpdate":{"shape":"ExtendedS3DestinationUpdate"},
-        "RedshiftDestinationUpdate":{"shape":"RedshiftDestinationUpdate"},
-        "ElasticsearchDestinationUpdate":{"shape":"ElasticsearchDestinationUpdate"}
+        "S3DestinationUpdate":{"shape":"S3DestinationUpdate"},
+        "RedshiftDestinationUpdate":{"shape":"RedshiftDestinationUpdate"}
       }
     },
     "UpdateDestinationOutput":{

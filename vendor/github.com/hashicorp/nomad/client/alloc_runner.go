@@ -381,19 +381,8 @@ func (r *AllocRunner) setTaskState(taskName, state string, event *structs.TaskEv
 		return
 	}
 
-	switch state {
-	case structs.TaskStateRunning:
-		// Capture the start time if it is just starting
-		if taskState.State != structs.TaskStateRunning {
-			taskState.StartedAt = time.Now().UTC()
-		}
-	case structs.TaskStateDead:
-		// Capture the finished time. If it has never started there is no finish
-		// time
-		if !taskState.StartedAt.IsZero() {
-			taskState.FinishedAt = time.Now().UTC()
-		}
-
+	taskState.State = state
+	if state == structs.TaskStateDead {
 		// Find all tasks that are not the one that is dead and check if the one
 		// that is dead is a leader
 		var otherTaskRunners []*TaskRunner
@@ -417,7 +406,6 @@ func (r *AllocRunner) setTaskState(taskName, state string, event *structs.TaskEv
 				r.logger.Printf("[DEBUG] client: task %q failed, destroying other tasks in task group: %v", taskName, otherTaskNames)
 			}
 		} else if leader {
-			// If the task was a leader task we should kill all the other tasks.
 			for _, tr := range otherTaskRunners {
 				tr.Destroy(structs.NewTaskEvent(structs.TaskLeaderDead))
 			}
@@ -425,10 +413,10 @@ func (r *AllocRunner) setTaskState(taskName, state string, event *structs.TaskEv
 				r.logger.Printf("[DEBUG] client: leader task %q is dead, destroying other tasks in task group: %v", taskName, otherTaskNames)
 			}
 		}
-	}
 
-	// Store the new state
-	taskState.State = state
+		// If the task was a leader task we should kill all the other
+		// tasks.
+	}
 
 	select {
 	case r.dirtyCh <- struct{}{}:

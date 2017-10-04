@@ -2,7 +2,7 @@
 
 set -e
 
-VAULT_VERSION="0.7.0"
+VAULT_VERSION="0.6.4"
 CURDIR=`pwd`
 
 if [[ $(which vault >/dev/null && vault version | cut -d ' ' -f 2) == "v$VAULT_VERSION" ]]; then

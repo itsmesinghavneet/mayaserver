@@ -2,6 +2,7 @@ package iotdataplane_test
 
 import (
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"testing"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -17,19 +18,14 @@ func TestRequireEndpointIfRegionProvided(t *testing.T) {
 	req, _ := svc.GetThingShadowRequest(nil)
 	err := req.Build()
 
-	if e, a := "", svc.Endpoint; e != a {
-		t.Errorf("expect %v, got %v", e, a)
-	}
-	if err == nil {
-		t.Errorf("expect error, got none")
-	}
-	if e, a := aws.ErrMissingEndpoint, err; e != a {
-		t.Errorf("expect %v, got %v", e, a)
-	}
+	assert.Equal(t, "", svc.Endpoint)
+	assert.Error(t, err)
+	assert.Equal(t, aws.ErrMissingEndpoint, err)
 }
 
 func TestRequireEndpointIfNoRegionProvided(t *testing.T) {
 	svc := iotdataplane.New(unit.Session, &aws.Config{
+		Region:                 aws.String(""),
 		DisableParamValidation: aws.Bool(true),
 	})
 	fmt.Println(svc.ClientInfo.SigningRegion)
@@ -37,15 +33,9 @@ func TestRequireEndpointIfNoRegionProvided(t *testing.T) {
 	req, _ := svc.GetThingShadowRequest(nil)
 	err := req.Build()
 
-	if e, a := "", svc.Endpoint; e != a {
-		t.Errorf("expect %v, got %v", e, a)
-	}
-	if err == nil {
-		t.Errorf("expect error, got none")
-	}
-	if e, a := aws.ErrMissingEndpoint, err; e != a {
-		t.Errorf("expect %v, got %v", e, a)
-	}
+	assert.Equal(t, "", svc.Endpoint)
+	assert.Error(t, err)
+	assert.Equal(t, aws.ErrMissingEndpoint, err)
 }
 
 func TestRequireEndpointUsed(t *testing.T) {
@@ -57,10 +47,6 @@ func TestRequireEndpointUsed(t *testing.T) {
 	req, _ := svc.GetThingShadowRequest(nil)
 	err := req.Build()
 
-	if e, a := "https://endpoint", svc.Endpoint; e != a {
-		t.Errorf("expect %v, got %v", e, a)
-	}
-	if err != nil {
-		t.Errorf("expect no error, got %v", err)
-	}
+	assert.Equal(t, "https://endpoint", svc.Endpoint)
+	assert.NoError(t, err)
 }
