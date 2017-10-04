@@ -8,9 +8,6 @@ language: go
 go:
   - 1.8
 
-branches:
-  only:
-    - master
 install:
   - make init
   - make
