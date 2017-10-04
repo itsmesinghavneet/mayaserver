@@ -7,7 +7,7 @@ VETARGS?=-asmdecl -atomic -bool -buildtags -copylocks -methods \
 
 # Tools required for different make targets or for development purposes
 EXTERNAL_TOOLS=\
-	github.com/kardianos/govendor \
+	github.com/Masterminds/glide \
 	github.com/golang/lint/golint \
 	github.com/mitchellh/gox \
 	golang.org/x/tools/cmd/cover \
@@ -32,18 +32,13 @@ bin:
 init: bootstrap
 
 deps:
-	rm -rf vendor/github.com/ && \
-  rm -rf vendor/cloud.google.com/ && \
-  rm -rf vendor/golang.org/ && \
-  rm -rf vendor/gopkg.in/ && \
-  rm -rf vendor/k8s.io/
 	@echo "--> Sync with vendored repositories." ;
 	@echo "--> Run this only when there is a change in vendor dependencies." ;
 	@echo "--> Please wait, this may take a while..." ;
-	@govendor sync
-
-sync:
-	@govendor sync
+	rm -rf vendor
+	@glide up
+	glide install -v
+	@echo "--> Please commit the changes made to the vendor directory..." ;
 
 clean:
 	rm -rf bin
@@ -119,4 +114,4 @@ image: maya
 	@cd buildscripts/docker && sudo docker build -t openebs/m-apiserver:ci .
 	@sh buildscripts/push
 
-.PHONY: all bin cov install test vet format cover bootstrap release clean deps init dev sync image
+.PHONY: all bin cov install test vet format cover bootstrap release clean deps init dev image
