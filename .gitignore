@@ -4,5 +4,3 @@
 /bin
 buildscripts/docker/m-apiserver
 buildscripts/docker/maya
-test*.*
-*.yaml
